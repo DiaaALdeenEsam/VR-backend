@@ -1,0 +1,5 @@
+{
+  "cat_vital": { "name": "علامات حيوية" },
+  "cat_lab": { "name": "تحاليل مخبرية" },
+  "cat_imaging": { "name": "أشعة" }
+}

@@ -1,0 +1,1094 @@
+<title>Patient Simulator Internals</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@600;700;800&family=Public+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Cairo:wght@700;800;900&family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&display=swap');
+
+  /* ---------- tokens: light (default) ---------- */
+  :root{
+    --ink:#1A2233;
+    --ink-soft:#5B6478;
+    --paper:#F4F5F8;
+    --surface:#FFFFFF;
+    --surface-2:#ECEEF3;
+    --accent:#2954A6;
+    --accent-strong:#1D3D80;
+    --accent-soft:#DEE7F7;
+    --amber:#B8763A;
+    --amber-soft:#F3E4D2;
+    --danger:#B3432E;
+    --danger-soft:#F5E1DC;
+    --line:#D8DCE6;
+    --shadow:rgba(26,34,51,0.08);
+
+    /* code panels: fixed dark micro-theme in both page themes, defined unconditionally */
+    --code-bg:#101725;
+    --code-fg:#D7E3F5;
+    --code-key:#7FB0E8;
+    --code-str:#E8C98A;
+    --code-muted:#6E7B96;
+    --code-line:#22304A;
+
+    --font-display:'Big Shoulders Display','Arial Narrow',sans-serif;
+    --font-body:'Public Sans','Segoe UI',Arial,sans-serif;
+    --font-mono:'JetBrains Mono','Consolas','SFMono-Regular',monospace;
+    --font-display-ar:'Cairo','Segoe UI',Tahoma,sans-serif;
+    --font-body-ar:'IBM Plex Sans Arabic','Segoe UI',Tahoma,sans-serif;
+
+    --fs-h1:clamp(2rem,1.5rem + 2vw,3rem);
+    --fs-h2:clamp(1.5rem,1.2rem + 1.2vw,2.1rem);
+    --fs-h3:1.2rem;
+    --fs-body:1rem;
+    --fs-small:0.86rem;
+    --fs-mono:0.85rem;
+  }
+
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --ink:#E8ECF5;
+      --ink-soft:#9AA6BE;
+      --paper:#0E1420;
+      --surface:#141B29;
+      --surface-2:#182031;
+      --accent:#6E9EE8;
+      --accent-strong:#8FB4EF;
+      --accent-soft:#1C2A44;
+      --amber:#D9A15C;
+      --amber-soft:#3A2C1C;
+      --danger:#E27A63;
+      --danger-soft:#3A211C;
+      --line:#26314A;
+      --shadow:rgba(0,0,0,0.4);
+    }
+  }
+  :root[data-theme="dark"]{
+    --ink:#E8ECF5;
+    --ink-soft:#9AA6BE;
+    --paper:#0E1420;
+    --surface:#141B29;
+    --surface-2:#182031;
+    --accent:#6E9EE8;
+    --accent-strong:#8FB4EF;
+    --accent-soft:#1C2A44;
+    --amber:#D9A15C;
+    --amber-soft:#3A2C1C;
+    --danger:#E27A63;
+    --danger-soft:#3A211C;
+    --line:#26314A;
+    --shadow:rgba(0,0,0,0.4);
+  }
+
+  *{ box-sizing:border-box; }
+  html,body{ background:var(--paper); }
+  body{ margin:0; }
+
+  #page{
+    font-family:var(--font-body);
+    font-size:var(--fs-body);
+    color:var(--ink);
+    background:var(--paper);
+    line-height:1.7;
+    -webkit-font-smoothing:antialiased;
+    direction:ltr;
+  }
+  #page.ar-mode{
+    font-family:var(--font-body-ar);
+    direction:rtl;
+    line-height:1.85;
+  }
+  #page.ar-mode h1, #page.ar-mode h2, #page.ar-mode h3{ font-family:var(--font-display-ar); }
+
+  /* bilingual toggle: both spans exist in the markup, CSS shows one */
+  .lang-ar{ display:none; }
+  #page.ar-mode .lang-en{ display:none; }
+  #page.ar-mode .lang-ar{ display:inline; }
+  #page.ar-mode svg text.lang-ar{ display:inline; direction:rtl; }
+  #page.ar-mode svg text.lang-en{ display:none; }
+
+  /* code/paths/mono content always reads LTR, regardless of page language */
+  code, pre, .mono, td.path{ direction:ltr; unicode-bidi:isolate; }
+
+  h1,h2,h3{
+    font-family:var(--font-display);
+    font-weight:700;
+    line-height:1.05;
+    text-wrap:balance;
+    margin:0 0 0.5em;
+    color:var(--ink);
+    letter-spacing:0.01em;
+  }
+  h1{ font-size:var(--fs-h1); font-weight:800; text-transform:uppercase; letter-spacing:0.02em; }
+  #page.ar-mode h1{ text-transform:none; letter-spacing:0; }
+  h2{
+    font-size:var(--fs-h2); text-transform:uppercase; letter-spacing:0.03em;
+    display:flex; align-items:baseline; gap:0.5rem;
+  }
+  #page.ar-mode h2{ text-transform:none; letter-spacing:0; }
+  h2 .sec-no{ font-size:0.55em; color:var(--accent); font-weight:600; direction:ltr; }
+  h3{ font-size:var(--fs-h3); font-weight:700; text-transform:none; letter-spacing:0; }
+  p{ margin:0 0 1em; color:var(--ink); max-width:70ch; }
+  a{ color:var(--accent-strong); }
+  a:focus-visible, button:focus-visible, .navlink:focus-visible{
+    outline:2px solid var(--accent);
+    outline-offset:3px;
+    border-radius:4px;
+  }
+
+  code, pre, .mono{ font-family:var(--font-mono); }
+  code{ background:var(--surface-2); border:1px solid var(--line); border-radius:4px; padding:0.05em 0.35em; font-size:0.9em; }
+
+  .wrap{ max-width:1220px; margin:0 auto; padding:0 clamp(1rem,4vw,3rem); }
+
+  /* ---------- language toggle ---------- */
+  .lang-toggle{
+    position:fixed; top:1rem; right:1rem; z-index:50;
+    display:flex; gap:0.2rem; background:var(--surface); border:1px solid var(--line);
+    border-radius:999px; padding:0.22rem; box-shadow:0 2px 8px var(--shadow);
+  }
+  .lang-btn{
+    font-family:var(--font-mono); font-size:0.76rem; font-weight:600;
+    border:none; background:transparent; color:var(--ink-soft);
+    padding:0.32rem 0.7rem; border-radius:999px; cursor:pointer;
+  }
+  .lang-btn.active{ background:var(--accent); color:#fff; }
+
+  /* ---------- header ---------- */
+  header.hero{
+    border-bottom:1px solid var(--line);
+    padding:clamp(2.4rem,5vw,3.8rem) 0 clamp(2rem,4vw,2.8rem);
+    background:
+      linear-gradient(180deg, var(--accent-soft) 0%, transparent 45%),
+      repeating-linear-gradient(0deg, transparent, transparent 39px, var(--line) 39px, var(--line) 40px),
+      repeating-linear-gradient(90deg, transparent, transparent 39px, var(--line) 39px, var(--line) 40px),
+      var(--paper);
+    background-blend-mode: normal, multiply, multiply, normal;
+  }
+  :root:not([data-theme="light"]) header.hero{ background-blend-mode:normal, screen, screen, normal; }
+  :root[data-theme="dark"] header.hero{ background-blend-mode:normal, screen, screen, normal; }
+
+  .eyebrow{
+    display:inline-flex; align-items:center; gap:0.5em;
+    font-family:var(--font-mono); font-size:var(--fs-small); font-weight:500; color:var(--accent-strong);
+    letter-spacing:0.04em; margin-bottom:1em;
+    background:var(--surface); border:1px solid var(--line); border-radius:999px;
+    padding:0.3em 0.9em;
+  }
+  #page.ar-mode .eyebrow{ font-family:var(--font-body-ar); letter-spacing:0; }
+  .eyebrow::before{ content:"●"; color:var(--accent); font-size:0.7em; }
+  header.hero p.lead{ max-width:68ch; font-size:1.08rem; color:var(--ink-soft); }
+
+  .pills{ display:flex; flex-wrap:wrap; gap:0.5rem; margin:1.4rem 0 1.8rem; }
+  .pill{
+    font-family:var(--font-mono); font-size:0.76rem; direction:ltr;
+    padding:0.3em 0.7em; border-radius:5px;
+    border:1px solid var(--line); background:var(--surface); color:var(--ink-soft);
+  }
+
+  .stats{
+    display:grid; grid-template-columns:repeat(4,1fr); gap:1px;
+    background:var(--line); border:1px solid var(--line); border-radius:2px;
+    overflow:hidden; max-width:760px;
+  }
+  .stat{ background:var(--surface); padding:1rem 1.1rem; }
+  .stat b{
+    display:block; font-family:var(--font-display); font-weight:800;
+    font-size:2rem; color:var(--accent-strong); font-variant-numeric:tabular-nums;
+    line-height:1;
+  }
+  .stat span{ font-size:var(--fs-small); color:var(--ink-soft); }
+  @media (max-width:720px){ .stats{ grid-template-columns:repeat(2,1fr); } }
+
+  /* ---------- layout: nav + content ---------- */
+  .layout{ display:flex; align-items:flex-start; gap:clamp(1.5rem,4vw,3.2rem); padding:clamp(2rem,5vw,3.2rem) 0 4rem; }
+  nav.toc{
+    position:sticky; top:1.4rem; flex:0 0 220px;
+    display:flex; flex-direction:column; gap:0.1rem;
+    border-inline-start:2px solid var(--line); padding-inline-start:1.1rem;
+  }
+  nav.toc .group-label{
+    font-family:var(--font-mono); font-size:0.68rem; font-weight:600; color:var(--ink-soft);
+    letter-spacing:0.08em; margin:1rem 0 0.35rem; text-transform:uppercase;
+  }
+  #page.ar-mode nav.toc .group-label{ font-family:var(--font-body-ar); letter-spacing:0; }
+  nav.toc .group-label:first-child{ margin-top:0; }
+  .navlink{
+    display:block; padding:0.28rem 0.5rem; margin:0 -0.5rem;
+    border-radius:4px; text-decoration:none; font-size:0.87rem;
+    color:var(--ink-soft); transition:background .15s, color .15s;
+  }
+  .navlink:hover{ background:var(--accent-soft); color:var(--accent-strong); }
+  .navlink.active{ background:var(--accent-soft); color:var(--accent-strong); font-weight:600; }
+  @media (max-width:900px){
+    .layout{ flex-direction:column; }
+    nav.toc{
+      position:static; width:100%; flex-direction:row; flex-wrap:wrap;
+      border-inline-start:none; padding-inline-start:0;
+      border-bottom:1px solid var(--line); padding-bottom:1rem; gap:0.4rem;
+    }
+    nav.toc .group-label{ display:none; }
+    .navlink{ border:1px solid var(--line); margin:0; font-size:0.8rem; }
+  }
+
+  main{ min-width:0; flex:1 1 auto; max-width:840px; }
+  section{ margin-bottom:clamp(2.8rem,5vw,3.8rem); scroll-margin-top:1.4rem; }
+  section > p:last-child{ margin-bottom:0; }
+
+  .note{
+    border-inline-start:3px solid var(--amber);
+    background:var(--amber-soft);
+    padding:0.75rem 1rem; border-radius:4px;
+    font-size:0.92rem; color:var(--ink);
+    margin:1rem 0; max-width:70ch;
+  }
+  .note b{ color:var(--ink); }
+
+  ul.tight, ol.tight{ padding-inline-start:1.3rem; margin:0 0 1em; max-width:70ch; }
+  ul.tight li, ol.tight li{ margin-bottom:0.5em; }
+  ul.tight li::marker{ color:var(--accent); font-family:var(--font-mono); }
+
+  /* ---------- figures / diagrams ---------- */
+  figure.diagram{
+    margin:1.6rem 0; padding:clamp(1.2rem,3vw,1.8rem);
+    background:var(--surface); border:1px solid var(--line); border-radius:4px;
+    direction:ltr;
+  }
+  figure.diagram svg{ display:block; width:100%; height:auto; color:var(--ink-soft); }
+  figure.diagram svg .accent{ color:var(--accent); }
+  figure.diagram svg .accent-fill{ fill:var(--accent-soft); stroke:var(--accent); }
+  figure.diagram svg .amber-fill{ fill:var(--amber-soft); stroke:var(--amber); }
+  figure.diagram svg .core-fill{ fill:var(--surface-2); stroke:var(--ink-soft); }
+  figure.diagram svg text{ fill:currentColor; font-family:var(--font-mono); }
+  figcaption{
+    margin-top:0.9rem; font-size:0.86rem; color:var(--ink-soft);
+    border-top:1px solid var(--line); padding-top:0.7rem;
+    direction:inherit;
+  }
+  #page.ar-mode figcaption{ direction:rtl; }
+
+  /* ---------- feature timeline cards ---------- */
+  .timeline{ display:flex; flex-direction:column; gap:1rem; }
+  .feature-card{
+    display:grid; grid-template-columns:2.8rem 1fr; gap:1rem;
+    border:1px solid var(--line); border-radius:4px; background:var(--surface);
+    padding:clamp(1.1rem,3vw,1.5rem);
+  }
+  .feature-num{
+    font-family:var(--font-display); font-weight:800; font-size:1.6rem;
+    color:var(--accent); line-height:1; padding-top:0.1rem;
+    font-variant-numeric:tabular-nums;
+  }
+  .feature-card h3{ margin-bottom:0.3rem; }
+  .feature-card .tag-row{ display:flex; flex-wrap:wrap; gap:0.4rem; margin:0.6rem 0; }
+  .feature-tag{
+    font-family:var(--font-mono); font-size:0.72rem; direction:ltr;
+    padding:0.15em 0.55em; border-radius:4px;
+    background:var(--surface-2); color:var(--ink-soft); border:1px solid var(--line);
+  }
+  .feature-card ul.tight{ margin-top:0.6rem; margin-bottom:0; font-size:0.94rem; }
+  .caveat{
+    display:flex; gap:0.5em; align-items:flex-start;
+    font-size:0.88rem; color:var(--ink-soft); margin-top:0.8rem;
+    border-top:1px dashed var(--line); padding-top:0.7rem;
+  }
+  .caveat b{ color:var(--amber); font-family:var(--font-mono); font-size:0.78rem; text-transform:uppercase; flex:0 0 auto; }
+  #page.ar-mode .caveat b{ font-family:var(--font-body-ar); text-transform:none; }
+
+  /* ---------- workflow steps ---------- */
+  ol.steps{ list-style:none; margin:0; padding:0; counter-reset:step; display:flex; flex-direction:column; gap:0; }
+  ol.steps li{
+    counter-increment:step;
+    display:grid; grid-template-columns:2.4rem 1fr; gap:0.9rem;
+    align-items:start; position:relative; padding-bottom:1.3rem;
+  }
+  ol.steps li::before{
+    content:counter(step);
+    width:2.4rem; height:2.4rem; border-radius:50%;
+    background:var(--accent-soft); color:var(--accent-strong);
+    font-family:var(--font-display); font-weight:800; font-size:1rem;
+    display:flex; align-items:center; justify-content:center;
+    font-variant-numeric:tabular-nums; z-index:1;
+  }
+  ol.steps li:not(:last-child)::after{
+    content:""; position:absolute; top:2.4rem; left:1.2rem;
+    width:2px; height:calc(100% - 2.4rem); background:var(--line);
+  }
+  #page.ar-mode ol.steps li:not(:last-child)::after{ left:auto; right:1.2rem; }
+  ol.steps li .step-body{ padding-top:0.3rem; }
+  ol.steps li .step-body b{ display:block; margin-bottom:0.15rem; }
+  ol.steps li .step-body span.detail{ font-size:0.9rem; color:var(--ink-soft); }
+  ol.steps li .step-body .mono{ font-size:0.82rem; }
+
+  /* ---------- endpoint reference table ---------- */
+  .table-scroll{ overflow-x:auto; border:1px solid var(--line); border-radius:4px; }
+  table.api-ref{ width:100%; border-collapse:collapse; font-size:0.88rem; min-width:640px; }
+  table.api-ref th{
+    text-align:start; font-family:var(--font-mono); font-size:0.72rem; text-transform:uppercase;
+    letter-spacing:0.05em; color:var(--ink-soft); background:var(--surface-2);
+    padding:0.6em 0.9em; border-bottom:1px solid var(--line);
+  }
+  #page.ar-mode table.api-ref th{ font-family:var(--font-body-ar); text-transform:none; }
+  table.api-ref td{ padding:0.6em 0.9em; border-bottom:1px solid var(--line); vertical-align:top; text-align:start; }
+  table.api-ref tr:last-child td{ border-bottom:none; }
+  table.api-ref td.path{ font-family:var(--font-mono); font-size:0.84rem; white-space:nowrap; }
+  .method{
+    font-family:var(--font-mono); font-weight:700; font-size:0.72rem; letter-spacing:0.03em;
+    padding:0.18em 0.55em; border-radius:4px; white-space:nowrap; direction:ltr;
+  }
+  .method.get{ background:var(--accent-soft); color:var(--accent-strong); }
+  .method.post{ background:var(--amber-soft); color:var(--amber); }
+  .method.ws{ background:var(--surface-2); color:var(--ink-soft); border:1px solid var(--line); }
+
+  /* ---------- principle cards ---------- */
+  .principles{ display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:1px; background:var(--line); border:1px solid var(--line); border-radius:4px; overflow:hidden; }
+  .principle{ background:var(--surface); padding:1.1rem 1.2rem; }
+  .principle .p-icon{ font-family:var(--font-mono); color:var(--accent); font-size:0.75rem; font-weight:600; letter-spacing:0.04em; text-transform:uppercase; margin-bottom:0.4rem; display:block; }
+  #page.ar-mode .principle .p-icon{ font-family:var(--font-body-ar); text-transform:none; letter-spacing:0; }
+  .principle p{ font-size:0.9rem; margin:0; }
+
+  pre.code{
+    background:var(--code-bg); color:var(--code-fg);
+    border:1px solid var(--code-line); border-radius:4px;
+    padding:0.85rem 1rem; margin:0; overflow-x:auto;
+    font-size:var(--fs-mono); line-height:1.6; direction:ltr; text-align:left;
+  }
+  pre.code .c{ color:var(--code-muted); }
+  .code-label{
+    font-family:var(--font-mono); font-size:0.72rem; font-weight:600; letter-spacing:0.04em;
+    color:var(--ink-soft); margin:1rem 0 0.35rem; text-transform:uppercase; direction:ltr;
+  }
+  .code-label:first-child{ margin-top:0; }
+
+  footer{
+    border-top:1px solid var(--line); padding:2.2rem 0 3rem;
+    color:var(--ink-soft); font-size:0.88rem;
+  }
+  footer a{ color:var(--accent-strong); }
+
+  @media (prefers-reduced-motion: reduce){
+    *{ animation:none !important; transition:none !important; }
+  }
+</style>
+
+<div id="page">
+
+  <div class="lang-toggle" role="group" aria-label="Language / اللغة">
+    <button type="button" class="lang-btn active" data-lang-btn="en" onclick="setLang('en')">EN</button>
+    <button type="button" class="lang-btn" data-lang-btn="ar" onclick="setLang('ar')">عربي</button>
+  </div>
+
+  <header class="hero">
+    <div class="wrap">
+      <span class="eyebrow">
+        <span class="lang-en">Engineering Report</span><span class="lang-ar">تقرير هندسي</span>
+      </span>
+      <h1>
+        <span class="lang-en">Patient Simulator Internals</span>
+        <span class="lang-ar">البنية الداخلية لمحاكي المريض</span>
+      </h1>
+      <p class="lead">
+        <span class="lang-en">A from-scratch FastAPI backend for training doctors on simulated patient cases —
+        built in strict Clean Architecture (Ports &amp; Adapters), backed by a real SQLite
+        database, and grown feature by feature: a chat-driven patient simulation powered by
+        a local LLM, OSCE-style scoring, and a full voice pipeline. This report explains how
+        it's built, why it's built that way, and how a request actually moves through it.</span>
+        <span class="lang-ar">واجهة خلفية مبنية بالكامل من الصفر بإطار FastAPI لتدريب الأطباء على حالات
+        مرضية محاكاة — مبنية ببنية نظيفة صارمة (Ports &amp; Adapters)، مدعومة بقاعدة بيانات SQLite
+        حقيقية، ومطوَّرة ميزة تلو الأخرى: محاكاة مريض تعتمد على المحادثة مدعومة بنموذج لغوي محلي،
+        تقييم بأسلوب OSCE، وخط أنابيب صوتي كامل. يشرح هذا التقرير كيف بُني هذا كله، ولماذا بُني
+        بهذه الطريقة تحديدًا، وكيف يتحرك الطلب فعليًا عبره.</span>
+      </p>
+
+      <div class="pills">
+        <span class="pill">FastAPI</span>
+        <span class="pill">SQLModel + Alembic</span>
+        <span class="pill">SQLite · aiosqlite</span>
+        <span class="pill">Qwen2.5-0.5B</span>
+        <span class="pill">faster-whisper</span>
+        <span class="pill">gTTS</span>
+        <span class="pill">pytest + httpx</span>
+      </div>
+
+      <div class="stats">
+        <div class="stat"><b>4</b><span><span class="lang-en">architecture layers</span><span class="lang-ar">طبقات معمارية</span></span></div>
+        <div class="stat"><b>14</b><span><span class="lang-en">endpoints (13 REST + 1 WS)</span><span class="lang-ar">نقطة نهاية (13 REST و1 WS)</span></span></div>
+        <div class="stat"><b>52</b><span><span class="lang-en">passing tests</span><span class="lang-ar">اختبار ناجح</span></span></div>
+        <div class="stat"><b>8</b><span><span class="lang-en">swappable stub/real ports</span><span class="lang-ar">منفذ قابل للتبديل (وهمي/حقيقي)</span></span></div>
+      </div>
+    </div>
+  </header>
+
+  <div class="wrap layout">
+    <nav class="toc" aria-label="Page contents">
+      <div class="group-label"><span class="lang-en">Foundations</span><span class="lang-ar">الأساسيات</span></div>
+      <a class="navlink" href="#overview"><span class="lang-en">Overview</span><span class="lang-ar">لمحة عامة</span></a>
+      <a class="navlink" href="#architecture"><span class="lang-en">Architecture</span><span class="lang-ar">البنية المعمارية</span></a>
+      <a class="navlink" href="#request-flow"><span class="lang-en">Request Flow</span><span class="lang-ar">مسار الطلب</span></a>
+
+      <div class="group-label"><span class="lang-en">What Was Built</span><span class="lang-ar">ما تم بناؤه</span></div>
+      <a class="navlink" href="#features"><span class="lang-en">Features, in Order</span><span class="lang-ar">الميزات بالترتيب</span></a>
+      <a class="navlink" href="#workflow"><span class="lang-en">Doctor's Workflow</span><span class="lang-ar">سير عمل الطبيب</span></a>
+      <a class="navlink" href="#api-reference"><span class="lang-en">API Reference</span><span class="lang-ar">مرجع الـ API</span></a>
+
+      <div class="group-label"><span class="lang-en">How It Was Built</span><span class="lang-ar">كيف بُني المشروع</span></div>
+      <a class="navlink" href="#principles"><span class="lang-en">Design Principles</span><span class="lang-ar">مبادئ التصميم</span></a>
+      <a class="navlink" href="#testing"><span class="lang-en">Testing &amp; Verification</span><span class="lang-ar">الاختبار والتحقق</span></a>
+      <a class="navlink" href="#setup"><span class="lang-en">Setup</span><span class="lang-ar">الإعداد</span></a>
+    </nav>
+
+    <main>
+
+      <section id="overview">
+        <h2><span class="sec-no">01</span> <span class="lang-en">Overview</span><span class="lang-ar">لمحة عامة</span></h2>
+        <p>
+          <span class="lang-en">The product: a doctor opens a clinical scenario, converses with a simulated patient
+          (by text or by voice), orders diagnostic tests, answers OSCE-style quiz questions,
+          and finally gets a structured evaluation of the whole encounter. Everything the
+          doctor doesn't already know — the underlying diagnosis, the answer key, test
+          results — stays server-side until the corresponding in-session action reveals it.</span>
+          <span class="lang-ar">المنتج: يفتح الطبيب سيناريو سريريًا، يحاور مريضًا محاكى (نصًا أو صوتًا)،
+          يطلب فحوصات تشخيصية، يجيب عن أسئلة اختبار بأسلوب OSCE، ثم يحصل أخيرًا على تقييم منظّم
+          للمواجهة بأكملها. كل ما لا يُفترض أن يعرفه الطبيب مسبقًا — التشخيص الفعلي، مفتاح
+          الإجابات، نتائج الفحوصات — يبقى على الخادم حتى يكشفه الإجراء المقابل ضمن الجلسة.</span>
+        </p>
+        <p>
+          <span class="lang-en">What was previously going to be scattered JSON files and in-memory dicts is instead
+          a real SQLite database, reached exclusively through a layered, testable backend:</span>
+          <span class="lang-ar">ما كان سيصبح ملفات JSON متفرقة وقواميس في الذاكرة أصبح بدلاً من ذلك قاعدة
+          بيانات SQLite حقيقية، لا يُوصَل إليها إلا عبر واجهة خلفية مُقسَّمة إلى طبقات وقابلة للاختبار:</span>
+        </p>
+        <ul class="tight">
+          <li>
+            <b><span class="lang-en">Persistence</span><span class="lang-ar">الحفظ (Persistence)</span></b>
+            <span class="lang-en"> — SQLModel table models, an async engine, and Alembic migrations
+            as the single source of schema truth (no <code>create_all()</code> anywhere).</span>
+            <span class="lang-ar"> — نماذج جداول SQLModel، ومحرك غير متزامن، وهجرات Alembic كمصدر
+            وحيد للحقيقة بخصوص المخطط (لا استدعاء لـ <code>create_all()</code> في أي مكان).</span>
+          </li>
+          <li>
+            <b><span class="lang-en">Domain logic</span><span class="lang-ar">منطق النطاق (Domain)</span></b>
+            <span class="lang-en"> — plain Python entities and abstract ports, with zero
+            knowledge of HTTP, SQL, or any ML library.</span>
+            <span class="lang-ar"> — كيانات Python صرفة ومنافذ (ports) مجرّدة، بلا أي معرفة
+            بـ HTTP أو SQL أو أي مكتبة تعلّم آلي.</span>
+          </li>
+          <li>
+            <b><span class="lang-en">Pluggable intelligence</span><span class="lang-ar">ذكاء قابل للتوصيل</span></b>
+            <span class="lang-en"> — every "smart" capability (patient replies, evaluation,
+            speech-to-text, text-to-speech) sits behind an interface with a free stub
+            implementation and a real local-model implementation, swappable by one config
+            setting.</span>
+            <span class="lang-ar"> — كل قدرة "ذكية" (ردود المريض، التقييم، تحويل الكلام إلى
+            نص، تحويل النص إلى كلام) تقف خلف واجهة تجريدية لها تنفيذ وهمي مجاني وتنفيذ حقيقي
+            بنموذج محلي، قابلان للتبديل بإعداد واحد فقط.</span>
+          </li>
+          <li>
+            <b><span class="lang-en">Voice, end to end</span><span class="lang-ar">الصوت من طرف إلى طرف</span></b>
+            <span class="lang-en"> — upload or stream audio in, get transcribed text, a
+            persisted chat turn, and synthesized speech back out.</span>
+            <span class="lang-ar"> — ارفع الصوت أو ابثّه، واحصل على نص مفرَّغ، ودورة محادثة
+            محفوظة، وكلامًا مُصنَّعًا في المقابل.</span>
+          </li>
+        </ul>
+      </section>
+
+      <section id="architecture">
+        <h2><span class="sec-no">02</span> <span class="lang-en">Architecture</span><span class="lang-ar">البنية المعمارية</span></h2>
+        <p>
+          <span class="lang-en">Four layers, strict inward dependency: <code>api</code> and <code>infrastructure</code>
+          depend on <code>application</code> and <code>domain</code> — never the reverse. A
+          dedicated test (<code>test_architecture_boundaries.py</code>) parses every file under
+          <code>domain/</code> and <code>application/</code> with Python's <code>ast</code>
+          module and fails the build the moment one of them imports SQLModel, FastAPI,
+          SQLAlchemy, or any ML/audio library. This isn't a comment promising discipline —
+          it's enforced on every test run.</span>
+          <span class="lang-ar">أربع طبقات، باعتماد صارم يتجه إلى الداخل: <code>api</code> و<code>infrastructure</code>
+          تعتمدان على <code>application</code> و<code>domain</code> — لا العكس أبدًا. اختبار
+          مخصص (<code>test_architecture_boundaries.py</code>) يحلّل كل ملف ضمن <code>domain/</code>
+          و<code>application/</code> باستخدام وحدة <code>ast</code> في بايثون، ويُفشل البناء فور
+          استيراد أحدها لـ SQLModel أو FastAPI أو SQLAlchemy أو أي مكتبة تعلّم آلي/صوت. هذه ليست
+          تعليقًا يعِد بالانضباط — بل قاعدة مُنفَّذة في كل تشغيل للاختبارات.</span>
+        </p>
+        <ul class="tight">
+          <li>
+            <code>app/domain/</code>
+            <span class="lang-en"> — <code>entities.py</code> (plain dataclasses),
+            <code>repositories.py</code> (abstract repository interfaces <em>and</em> the four
+            "port" interfaces below), <code>exceptions.py</code>.</span>
+            <span class="lang-ar"> — <code>entities.py</code> (كيانات dataclasses صرفة)،
+            <code>repositories.py</code> (واجهات مستودعات مجرّدة، وواجهات "المنافذ" الأربعة
+            أدناه أيضًا)، <code>exceptions.py</code>.</span>
+          </li>
+          <li>
+            <code>app/application/use_cases/</code>
+            <span class="lang-en"> — one class per user-facing action, each constructor-injected
+            with a <code>AbstractUnitOfWork</code> and whatever port(s) it needs.</span>
+            <span class="lang-ar"> — صنف واحد لكل إجراء يواجه المستخدم، يُحقَن في مُنشئه
+            بـ <code>AbstractUnitOfWork</code> وأي منفذ (منافذ) يحتاجها.</span>
+          </li>
+          <li>
+            <code>app/infrastructure/</code>
+            <span class="lang-en"> — SQLModel models, the async engine, concrete repository
+            implementations, and every stub/real port adapter.</span>
+            <span class="lang-ar"> — نماذج SQLModel، والمحرك غير المتزامن، وتنفيذات المستودعات
+            الفعلية، وكل محوّل منفذ وهمي أو حقيقي.</span>
+          </li>
+          <li>
+            <code>app/api/</code>
+            <span class="lang-en"> — thin FastAPI routers: parse request, call a use case via
+            <code>Depends()</code>, map the result to a Pydantic schema. No business logic.</span>
+            <span class="lang-ar"> — راوترات FastAPI رقيقة: تُحلّل الطلب، تستدعي حالة استخدام
+            عبر <code>Depends()</code>، وتُحوّل الناتج إلى مخطط Pydantic. بلا أي منطق عمل.</span>
+          </li>
+        </ul>
+
+        <figure class="diagram">
+          <svg viewBox="0 0 700 380" role="img" aria-label="Diagram: a use case depends only on an abstract port interface; at runtime, a Settings value picks one of two concrete adapters to satisfy it, and the real adapter falls back to the stub one on failure.">
+            <defs>
+              <marker id="arrow1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                <path d="M0,0 L10,5 L0,10 z" fill="currentColor"/>
+              </marker>
+            </defs>
+
+            <!-- Use Case -->
+            <rect x="20" y="140" width="150" height="60" rx="4" class="core-fill" stroke-width="1.5"/>
+            <text class="lang-en" x="95" y="166" text-anchor="middle" font-size="13" font-weight="600">Use Case</text>
+            <text class="lang-ar" x="95" y="166" text-anchor="middle" font-size="13" font-weight="600">حالة استخدام</text>
+            <text x="95" y="184" text-anchor="middle" font-size="10.5" opacity="0.75">e.g. TranscribeAudioUseCase</text>
+
+            <!-- arrow to port -->
+            <line x1="170" y1="170" x2="222" y2="170" stroke="currentColor" stroke-width="1.5" marker-end="url(#arrow1)"/>
+            <text class="lang-en" x="196" y="160" text-anchor="middle" font-size="9.5" opacity="0.8">depends on</text>
+            <text class="lang-ar" x="196" y="160" text-anchor="middle" font-size="9.5" opacity="0.8">تعتمد على</text>
+
+            <!-- Port (interface, dashed) -->
+            <rect x="228" y="140" width="190" height="60" rx="4" fill="none" class="accent" stroke="currentColor" stroke-width="1.5" stroke-dasharray="5 4"/>
+            <text x="323" y="166" text-anchor="middle" font-size="13" font-weight="600" class="accent">SpeechToTextPort</text>
+            <text class="lang-en" x="323" y="184" text-anchor="middle" font-size="10.5" opacity="0.75">abstract — domain/repositories.py</text>
+            <text class="lang-ar" x="323" y="184" text-anchor="middle" font-size="10.5" opacity="0.75">مجرّدة — domain/repositories.py</text>
+
+            <!-- fork lines to two adapters -->
+            <polyline points="418,155 468,155 468,68 500,68" fill="none" stroke="currentColor" stroke-width="1.5" marker-end="url(#arrow1)"/>
+            <polyline points="418,185 468,185 468,272 500,272" fill="none" stroke="currentColor" stroke-width="1.5" marker-end="url(#arrow1)"/>
+            <text class="lang-en" x="472" y="168" font-size="9.5" opacity="0.85">picked by</text>
+            <text class="lang-ar" x="472" y="168" font-size="9.5" opacity="0.85">يُختار بواسطة</text>
+            <text x="440" y="216" font-size="9.5" opacity="0.85" text-anchor="middle">Settings.stt_backend</text>
+
+            <!-- Stub adapter -->
+            <rect x="506" y="40" width="174" height="56" rx="4" class="accent-fill" stroke-width="1.5"/>
+            <text x="593" y="63" text-anchor="middle" font-size="12.5" font-weight="600">StubSTTAdapter</text>
+            <text class="lang-en" x="593" y="80" text-anchor="middle" font-size="10" opacity="0.8">"stub" — canned text, no ML</text>
+            <text class="lang-ar" x="593" y="80" text-anchor="middle" font-size="10" opacity="0.8">"stub" — نص جاهز، بلا تعلّم آلي</text>
+
+            <!-- Real adapter -->
+            <rect x="506" y="244" width="174" height="56" rx="4" class="amber-fill" stroke-width="1.5"/>
+            <text x="593" y="267" text-anchor="middle" font-size="12.5" font-weight="600">LocalWhisperSTTAdapter</text>
+            <text class="lang-en" x="593" y="284" text-anchor="middle" font-size="10" opacity="0.8">"whisper" — faster-whisper, CPU</text>
+            <text class="lang-ar" x="593" y="284" text-anchor="middle" font-size="10" opacity="0.8">"whisper" — faster-whisper، على المعالج</text>
+
+            <!-- fallback arrow, real -> stub -->
+            <path d="M 506,258 C 420,258 420,68 500,68" fill="none" stroke="currentColor" stroke-width="1.5" stroke-dasharray="3 3" marker-end="url(#arrow1)"/>
+            <text class="lang-en" x="330" y="330" text-anchor="middle" font-size="10.5" opacity="0.85">falls back automatically on load / inference failure</text>
+            <text class="lang-ar" x="330" y="330" text-anchor="middle" font-size="10.5" opacity="0.85">يعود تلقائيًا إلى البديل عند فشل التحميل / الاستدلال</text>
+          </svg>
+          <figcaption>
+            <span class="lang-en"><b>Figure 1.</b> One port shown as the representative example (<code>SpeechToTextPort</code>) —
+            the same shape repeats for <code>PatientReplyGenerator</code>, <code>EvaluationGenerator</code>,
+            and <code>TextToSpeechPort</code>: a use case depends only on the abstract interface, a
+            <code>Settings</code> value picks which concrete adapter satisfies it at request time, and
+            the real adapter never lets a load/inference failure reach the caller — it silently
+            hands off to the stub instead.</span>
+            <span class="lang-ar"><b>الشكل 1.</b> منفذ واحد كمثال تمثيلي (<code>SpeechToTextPort</code>) — ونفس
+            الشكل يتكرر لـ <code>PatientReplyGenerator</code> و<code>EvaluationGenerator</code>
+            و<code>TextToSpeechPort</code>: حالة الاستخدام تعتمد فقط على الواجهة المجرّدة، وقيمة في
+            <code>Settings</code> تختار المحوّل الفعلي وقت الطلب، والمحوّل الحقيقي لا يدع فشل
+            التحميل/الاستدلال يصل أبدًا إلى المستدعي — بل يُسلّم الأمر بصمت إلى النسخة الوهمية بدلاً
+            من ذلك.</span>
+          </figcaption>
+        </figure>
+      </section>
+
+      <section id="request-flow">
+        <h2><span class="sec-no">03</span> <span class="lang-en">Request Flow</span><span class="lang-ar">مسار الطلب</span></h2>
+        <p>
+          <span class="lang-en">Tracing one real request — <code>POST /sessions/{id}/messages</code> — through every
+          layer it crosses, in order. The not-found checks each use case does first are
+          omitted here for clarity; see <code>post_message.py</code> for the full logic.</span>
+          <span class="lang-ar">تتبّع طلب حقيقي واحد — <code>POST /sessions/{id}/messages</code> — عبر كل طبقة
+          يمر بها، بالترتيب. فحوصات "غير موجود" التي تُجريها كل حالة استخدام أولاً حُذفت هنا
+          للوضوح؛ راجع <code>post_message.py</code> للمنطق الكامل.</span>
+        </p>
+
+        <figure class="diagram">
+          <svg viewBox="0 0 760 260" role="img" aria-label="Diagram: an HTTP request flows through the router, into a use case that writes the doctor's message, calls the patient-reply port, writes the reply, commits, and returns through the router to an HTTP response.">
+            <defs>
+              <marker id="arrow2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                <path d="M0,0 L10,5 L0,10 z" fill="currentColor"/>
+              </marker>
+            </defs>
+
+            <!-- Row 1 -->
+            <rect x="20" y="20" width="200" height="58" rx="4" class="core-fill" stroke-width="1.5"/>
+            <text class="lang-en" x="120" y="45" text-anchor="middle" font-size="12.5" font-weight="600">HTTP Request</text>
+            <text class="lang-ar" x="120" y="45" text-anchor="middle" font-size="12.5" font-weight="600">طلب HTTP</text>
+            <text x="120" y="62" text-anchor="middle" font-size="10" opacity="0.75">POST /sessions/{id}/messages</text>
+
+            <line x1="220" y1="49" x2="256" y2="49" stroke="currentColor" stroke-width="1.5" marker-end="url(#arrow2)"/>
+            <text class="lang-en" x="238" y="40" text-anchor="middle" font-size="9">routed</text>
+            <text class="lang-ar" x="238" y="40" text-anchor="middle" font-size="9">يُوجَّه</text>
+
+            <rect x="262" y="20" width="200" height="58" rx="4" class="core-fill" stroke-width="1.5"/>
+            <text class="lang-en" x="362" y="45" text-anchor="middle" font-size="12.5" font-weight="600">Router</text>
+            <text class="lang-ar" x="362" y="45" text-anchor="middle" font-size="12.5" font-weight="600">الموجّه</text>
+            <text x="362" y="62" text-anchor="middle" font-size="10" opacity="0.75">api/routers/chat.py</text>
+
+            <line x1="462" y1="49" x2="498" y2="49" stroke="currentColor" stroke-width="1.5" marker-end="url(#arrow2)"/>
+            <text x="480" y="40" text-anchor="middle" font-size="9">Depends()</text>
+
+            <rect x="504" y="20" width="200" height="58" rx="4" class="accent-fill" stroke-width="1.5"/>
+            <text class="lang-en" x="604" y="45" text-anchor="middle" font-size="12.5" font-weight="600">Use Case</text>
+            <text class="lang-ar" x="604" y="45" text-anchor="middle" font-size="12.5" font-weight="600">حالة استخدام</text>
+            <text class="lang-en" x="604" y="62" text-anchor="middle" font-size="10" opacity="0.8">write doctor's message</text>
+            <text class="lang-ar" x="604" y="62" text-anchor="middle" font-size="10" opacity="0.8">كتابة رسالة الطبيب</text>
+
+            <!-- wrap connector row1 -> row2 -->
+            <polyline points="704,49 740,49 740,140 704,140" fill="none" stroke="currentColor" stroke-width="1.5" marker-end="url(#arrow2)"/>
+
+            <!-- Row 2 -->
+            <rect x="504" y="111" width="200" height="58" rx="4" class="amber-fill" stroke-width="1.5"/>
+            <text class="lang-en" x="604" y="136" text-anchor="middle" font-size="12.5" font-weight="600">Port → Adapter</text>
+            <text class="lang-ar" x="604" y="136" text-anchor="middle" font-size="12.5" font-weight="600">منفذ ← محوّل</text>
+            <text x="604" y="153" text-anchor="middle" font-size="10" opacity="0.8">PatientReplyGenerator</text>
+
+            <line x1="504" y1="140" x2="468" y2="140" stroke="currentColor" stroke-width="1.5" marker-end="url(#arrow2)"/>
+            <text class="lang-en" x="486" y="131" text-anchor="middle" font-size="9">reply text</text>
+            <text class="lang-ar" x="486" y="131" text-anchor="middle" font-size="9">نص الرد</text>
+
+            <rect x="262" y="111" width="200" height="58" rx="4" class="accent-fill" stroke-width="1.5"/>
+            <text class="lang-en" x="362" y="136" text-anchor="middle" font-size="12.5" font-weight="600">Use Case</text>
+            <text class="lang-ar" x="362" y="136" text-anchor="middle" font-size="12.5" font-weight="600">حالة استخدام</text>
+            <text class="lang-en" x="362" y="153" text-anchor="middle" font-size="10" opacity="0.8">write reply, commit()</text>
+            <text class="lang-ar" x="362" y="153" text-anchor="middle" font-size="10" opacity="0.8">كتابة الرد، commit()</text>
+
+            <line x1="262" y1="140" x2="226" y2="140" stroke="currentColor" stroke-width="1.5" marker-end="url(#arrow2)"/>
+            <text x="244" y="131" text-anchor="middle" font-size="9">Message</text>
+
+            <rect x="20" y="111" width="200" height="58" rx="4" class="core-fill" stroke-width="1.5"/>
+            <text class="lang-en" x="120" y="136" text-anchor="middle" font-size="12.5" font-weight="600">Router</text>
+            <text class="lang-ar" x="120" y="136" text-anchor="middle" font-size="12.5" font-weight="600">الموجّه</text>
+            <text class="lang-en" x="120" y="153" text-anchor="middle" font-size="10" opacity="0.75">maps to MessageRead</text>
+            <text class="lang-ar" x="120" y="153" text-anchor="middle" font-size="10" opacity="0.75">يُحوَّل إلى MessageRead</text>
+
+            <line x1="120" y1="169" x2="120" y2="205" stroke="currentColor" stroke-width="1.5" marker-end="url(#arrow2)"/>
+
+            <rect x="20" y="211" width="200" height="42" rx="4" fill="none" stroke="currentColor" stroke-width="1.5"/>
+            <text class="lang-en" x="120" y="237" text-anchor="middle" font-size="12.5" font-weight="600">HTTP 201 Response</text>
+            <text class="lang-ar" x="120" y="237" text-anchor="middle" font-size="12.5" font-weight="600">استجابة HTTP 201</text>
+          </svg>
+          <figcaption>
+            <span class="lang-en"><b>Figure 2.</b> One request, four layer crossings and back: <code>api</code> →
+            <code>application</code> → <code>infrastructure</code> (the port/adapter) → back through
+            <code>application</code> → <code>api</code>. The use case is the only place that ever
+            talks to both the database (via the injected <code>UnitOfWork</code>) and the port in
+            the same call — routers and adapters never talk to each other directly.</span>
+            <span class="lang-ar"><b>الشكل 2.</b> طلب واحد، أربع عبورات للطبقات ذهابًا وإيابًا: <code>api</code>
+            ← <code>application</code> ← <code>infrastructure</code> (المنفذ/المحوّل) ← عودةً عبر
+            <code>application</code> ← <code>api</code>. حالة الاستخدام هي المكان الوحيد الذي يتحدث
+            فيه الكود مع قاعدة البيانات (عبر <code>UnitOfWork</code> المحقون) ومع المنفذ في الاستدعاء
+            نفسه — الراوترات والمحوّلات لا تتحدث مع بعضها مباشرة أبدًا.</span>
+          </figcaption>
+        </figure>
+      </section>
+
+      <section id="features">
+        <h2><span class="sec-no">04</span> <span class="lang-en">Features, in Build Order</span><span class="lang-ar">الميزات، بترتيب البناء</span></h2>
+        <p>
+          <span class="lang-en">Five passes, each shipped with its own tests and verified against a live server before moving on.</span>
+          <span class="lang-ar">خمس مراحل، كل واحدة أُطلقت باختباراتها الخاصة وتم التحقق منها مقابل خادم فعلي قبل الانتقال للتالية.</span>
+        </p>
+
+        <div class="timeline">
+
+          <div class="feature-card">
+            <div class="feature-num">01</div>
+            <div>
+              <h3><span class="lang-en">Foundation: the layered backend itself</span><span class="lang-ar">الأساس: الواجهة الخلفية المُقسَّمة نفسها</span></h3>
+              <p>
+                <span class="lang-en">The whole clean-architecture skeleton, from nothing: 8 SQLModel tables behind
+                Alembic migrations, an async engine, one repository implementation per
+                aggregate wrapped in a <code>SqlAlchemyUnitOfWork</code>, and 10 REST endpoints
+                covering scenarios, sessions, chat, test ordering, quiz answers, and session
+                review — all with a strict no-leak rule (test results, answer keys, and
+                answer correctness are never returned before the action that's supposed to
+                reveal them).</span>
+                <span class="lang-ar">الهيكل الكامل للبنية النظيفة، من الصفر: 8 جداول SQLModel خلف هجرات
+                Alembic، ومحرك غير متزامن، وتنفيذ مستودع واحد لكل تجميعة ملفوف في
+                <code>SqlAlchemyUnitOfWork</code>، و10 نقاط نهاية REST تغطي السيناريوهات والجلسات
+                والمحادثة وطلب الفحوصات وإجابات الاختبار ومراجعة الجلسة — كل ذلك بقاعدة صارمة لعدم
+                التسريب (نتائج الفحوصات، ومفاتيح الإجابات، وصحة الإجابات لا تُعاد أبدًا قبل الإجراء
+                المفترض أن يكشفها).</span>
+              </p>
+              <div class="tag-row">
+                <span class="feature-tag">SQLModel</span>
+                <span class="feature-tag">Alembic</span>
+                <span class="feature-tag">UnitOfWork</span>
+                <span class="feature-tag">seed.py</span>
+              </div>
+              <div class="caveat">
+                <b><span class="lang-en">Decision</span><span class="lang-ar">قرار</span></b>
+                <span class="lang-en">the chat reply started as a fixed-echo stub — a real model was always a later, separate concern.</span>
+                <span class="lang-ar">بدأ رد المحادثة كنموذج بديل ثابت الصدى — كان النموذج الحقيقي دومًا مسألة لاحقة ومنفصلة.</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="feature-card">
+            <div class="feature-num">02</div>
+            <div>
+              <h3><span class="lang-en">A real local patient — Qwen2.5-0.5B-Instruct</span><span class="lang-ar">مريض محلي حقيقي — Qwen2.5-0.5B-Instruct</span></h3>
+              <p>
+                <span class="lang-en">Replaced the chat stub with a genuine local LLM: <code>transformers</code> +
+                CPU-only <code>torch</code>, lazily loaded once per process and cached, kept
+                strictly in character and in Arabic by its system prompt. Every failure mode
+                (no network on first download, out of memory, deps missing) falls back to a
+                labeled placeholder reply instead of crashing the request.</span>
+                <span class="lang-ar">استبدال النموذج البديل للمحادثة بنموذج لغوي محلي حقيقي:
+                <code>transformers</code> مع <code>torch</code> على المعالج فقط (CPU)، يُحمَّل
+                بتكاسل مرة واحدة لكل عملية ويبقى مخزَّنًا، ويُبقيه موجّه النظام ضمن الشخصية
+                وباللغة العربية بدقة. كل نمط فشل (لا اتصال إنترنت عند أول تنزيل، نفاد الذاكرة،
+                اعتماديات ناقصة) يعود إلى رد بديل موسوم بوضوح بدلاً من تعطّل الطلب.</span>
+              </p>
+              <div class="tag-row">
+                <span class="feature-tag">transformers</span>
+                <span class="feature-tag">torch (CPU)</span>
+                <span class="feature-tag">PatientReplyGenerator</span>
+              </div>
+              <div class="caveat">
+                <b><span class="lang-en">Honest caveat</span><span class="lang-ar">ملاحظة صادقة</span></b>
+                <span class="lang-en">at 0.5B parameters the model occasionally breaks character or rambles — real, working, and genuinely small, not production-grade dialogue.</span>
+                <span class="lang-ar">بحجم 0.5 مليار معامل، يخرج النموذج أحيانًا عن الشخصية أو يسترسل بلا ترابط — نموذج حقيقي وعامل وصغير فعلاً، وليس حوارًا بجودة إنتاجية.</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="feature-card">
+            <div class="feature-num">03</div>
+            <div>
+              <h3><span class="lang-en">OSCE-style evaluation</span><span class="lang-ar">تقييم بأسلوب OSCE</span></h3>
+              <p>
+                <span class="lang-en">A new <code>EvaluationGenerator</code> port and <code>POST /sessions/{id}/evaluate</code>:
+                scores the encounter against the scenario's <code>gold_standard</code>, with a
+                per-criterion pass/fail breakdown. Generated on demand, never persisted — call
+                it again after the doctor does more in the session for an updated read.</span>
+                <span class="lang-ar">منفذ جديد <code>EvaluationGenerator</code> ونقطة نهاية
+                <code>POST /sessions/{id}/evaluate</code>: يُقيّم المواجهة مقابل
+                <code>gold_standard</code> الخاص بالسيناريو، مع تفصيل لكل معيار بنجاح/فشل. يُولَّد
+                عند الطلب فقط ولا يُخزَّن أبدًا — استدعه مرة أخرى بعد أن يفعل الطبيب المزيد ضمن
+                الجلسة للحصول على قراءة محدَّثة.</span>
+              </p>
+              <div class="tag-row">
+                <span class="feature-tag">EvaluationGenerator</span>
+                <span class="feature-tag">stub_evaluator.py</span>
+              </div>
+              <div class="caveat">
+                <b><span class="lang-en">Convention over plan</span><span class="lang-ar">الاتفاقية أولى من الخطة</span></b>
+                <span class="lang-en">the plan asked for a bare <code>ValueError</code> on a missing gold standard; implemented as a proper <code>MissingGoldStandardError(DomainError)</code> instead, so it flows through the same centralized 400-mapping every other domain error uses.</span>
+                <span class="lang-ar">طلبت الخطة رفع <code>ValueError</code> مجرّد عند غياب المعيار المرجعي؛ نُفِّذ بدلاً من ذلك كـ <code>MissingGoldStandardError(DomainError)</code> حقيقي، ليمر عبر نفس تحويل 400 المركزي الذي تستخدمه كل أخطاء النطاق الأخرى.</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="feature-card">
+            <div class="feature-num">04</div>
+            <div>
+              <h3><span class="lang-en">Rich seed data + full end-to-end coverage</span><span class="lang-ar">بيانات تمهيدية غنية + تغطية كاملة من طرف إلى طرف</span></h3>
+              <p>
+                <span class="lang-en">A realistic Arabic scenario set (<code>seed_data/</code>) — appendicitis with a
+                gold standard, gastritis without one, three test categories, eight tests with
+                clinically plausible results, and OSCE questions for both scenarios — plus a
+                dedicated E2E suite that walks all 11 REST endpoints in one flow, seeded via
+                the <em>real</em> seed-script functions (so it doubles as a regression test
+                for the seed script itself). A <code>scripts/smoke_test.py</code> runner and a
+                curl walkthrough cover manual testing.</span>
+                <span class="lang-ar">مجموعة سيناريوهات عربية واقعية (<code>seed_data/</code>) — التهاب
+                الزائدة الدودية بمعيار مرجعي، والتهاب المعدة بلا معيار، وثلاث تصنيفات فحوصات،
+                وثمانية فحوصات بنتائج معقولة سريريًا، وأسئلة OSCE لكلا السيناريوهين — بالإضافة إلى
+                حزمة اختبار شاملة (E2E) تمر بكل نقاط REST الإحدى عشرة في تدفق واحد، مزروعة عبر دوال
+                سكربت التزريع <em>الفعلية</em> (فتُصبح بذلك اختبار ارتداد لسكربت التزريع نفسه أيضًا).
+                سكربت تشغيل <code>scripts/smoke_test.py</code> ودليل عبر curl يغطيان الاختبار اليدوي.</span>
+              </p>
+              <div class="tag-row">
+                <span class="feature-tag">seed_data/</span>
+                <span class="feature-tag">test_all_endpoints_e2e.py</span>
+                <span class="feature-tag">smoke_test.py</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="feature-card">
+            <div class="feature-num">05</div>
+            <div>
+              <h3><span class="lang-en">Voice pipeline: STT + TTS</span><span class="lang-ar">خط أنابيب صوتي: تحويل الكلام إلى نص والعكس</span></h3>
+              <p>
+                <span class="lang-en">Two new ports (<code>SpeechToTextPort</code>, <code>TextToSpeechPort</code>) and
+                three endpoints: <code>POST /transcribe</code>, <code>POST /sessions/{id}/chat-voice</code>
+                (audio in → transcript + persisted chat turn + synthesized reply audio out),
+                and <code>WS /ws/voice</code> for the same flow over a WebSocket, one utterance
+                per binary frame. Speech-to-text is a local <code>faster-whisper</code> "tiny"
+                model forced to Arabic; text-to-speech is gTTS. <code>ProcessVoiceChatUseCase</code>
+                composes <code>PostMessageUseCase</code> directly rather than duplicating chat
+                persistence — the one place in this codebase a use case depends on another
+                use case instead of only on ports.</span>
+                <span class="lang-ar">منفذان جديدان (<code>SpeechToTextPort</code>، <code>TextToSpeechPort</code>)
+                وثلاث نقاط نهاية: <code>POST /transcribe</code>، و<code>POST /sessions/{id}/chat-voice</code>
+                (صوت يدخل ← نص مفرّغ + دورة محادثة محفوظة + صوت رد مُصنَّع يخرج)، و<code>WS /ws/voice</code>
+                لنفس التدفق عبر WebSocket، نطق واحد لكل إطار ثنائي. تحويل الكلام إلى نص محلي عبر نموذج
+                <code>faster-whisper</code> "tiny" مُجبَر على العربية؛ وتحويل النص إلى كلام عبر gTTS.
+                <code>ProcessVoiceChatUseCase</code> يستدعي <code>PostMessageUseCase</code> مباشرة
+                بدلاً من تكرار منطق حفظ المحادثة — المكان الوحيد في هذا المشروع الذي تعتمد فيه حالة
+                استخدام على حالة استخدام أخرى بدلاً من الاعتماد على المنافذ فقط.</span>
+              </p>
+              <div class="tag-row">
+                <span class="feature-tag">faster-whisper</span>
+                <span class="feature-tag">gTTS</span>
+                <span class="feature-tag">WebSocket</span>
+              </div>
+              <div class="caveat">
+                <b><span class="lang-en">Honest caveat</span><span class="lang-ar">ملاحظة صادقة</span></b>
+                <span class="lang-en">gTTS calls Google Translate's TTS endpoint over the network per request — despite matching this project's "Local*Adapter" naming, it is not an offline engine. <code>piper-tts</code> (genuinely offline) was considered and skipped: it needs <code>espeak-ng</code>, a system dependency <code>pip</code> can't install alone.</span>
+                <span class="lang-ar">gTTS يستدعي نقطة تحويل النص إلى كلام في ترجمة جوجل عبر الشبكة لكل طلب — رغم مطابقته لتسمية "Local*Adapter" في هذا المشروع، فهو ليس محركًا يعمل دون اتصال. تم النظر في <code>piper-tts</code> (محرك يعمل فعليًا دون اتصال) وتم تجاوزه: يحتاج <code>espeak-ng</code>، وهي اعتمادية نظام لا يمكن تثبيتها عبر pip وحدها.</span>
+              </div>
+              <div class="caveat">
+                <b><span class="lang-en">Convention over plan</span><span class="lang-ar">الاتفاقية أولى من الخطة</span></b>
+                <span class="lang-en"><code>/chat-voice</code> was specified flat; implemented as <code>/sessions/{id}/chat-voice</code> instead, matching every other session-scoped mutation in the API.</span>
+                <span class="lang-ar">حُدِّد <code>/chat-voice</code> كمسار مسطّح في الخطة؛ نُفِّذ بدلاً من ذلك كـ <code>/sessions/{id}/chat-voice</code>، مطابقًا لكل تعديل آخر مرتبط بجلسة في الـ API.</span>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </section>
+
+      <section id="workflow">
+        <h2><span class="sec-no">05</span> <span class="lang-en">A Doctor's Workflow</span><span class="lang-ar">سير عمل الطبيب</span></h2>
+        <p>
+          <span class="lang-en">What actually happens, end to end, across everything above:</span>
+          <span class="lang-ar">ما يحدث فعليًا، من البداية للنهاية، عبر كل ما سبق:</span>
+        </p>
+        <ol class="steps">
+          <li><div class="step-body">
+            <b><span class="lang-en">Browse scenarios</span><span class="lang-ar">تصفّح السيناريوهات</span></b>
+            <span class="mono">GET /scenarios</span>
+            <span class="detail"><span class="lang-en">name only; the case and gold standard stay hidden.</span><span class="lang-ar">الاسم فقط؛ تبقى الحالة والمعيار المرجعي مخفيين.</span></span>
+          </div></li>
+          <li><div class="step-body">
+            <b><span class="lang-en">Start a session</span><span class="lang-ar">ابدأ جلسة</span></b>
+            <span class="mono">POST /sessions</span>
+            <span class="detail"><span class="lang-en">gets a session id used for everything below.</span><span class="lang-ar">يحصل على معرّف جلسة يُستخدم في كل ما يلي.</span></span>
+          </div></li>
+          <li><div class="step-body">
+            <b><span class="lang-en">Interview the patient</span><span class="lang-ar">استجوب المريض</span></b>
+            <span class="mono">POST /sessions/{id}/messages</span>
+            <span class="detail"><span class="lang-en">or its voice equivalent — a chat turn either way, same persisted history.</span><span class="lang-ar">أو مكافئه الصوتي — دورة محادثة في الحالتين، بنفس السجل المحفوظ.</span></span>
+          </div></li>
+          <li><div class="step-body">
+            <b><span class="lang-en">Order investigations</span><span class="lang-ar">اطلب الفحوصات</span></b>
+            <span class="mono">GET /test-categories/{id}/tests → POST /sessions/{id}/tests</span>
+            <span class="detail"><span class="lang-en">results are invisible until this exact call.</span><span class="lang-ar">النتائج غير مرئية حتى هذا الاستدعاء تحديدًا.</span></span>
+          </div></li>
+          <li><div class="step-body">
+            <b><span class="lang-en">Answer the quiz</span><span class="lang-ar">أجب عن الاختبار</span></b>
+            <span class="mono">GET /scenarios/{id}/questions → POST /sessions/{id}/answers</span>
+            <span class="detail"><span class="lang-en">no answer key leaks, and no correctness leaks back either; re-answering upserts.</span><span class="lang-ar">لا يتسرّب مفتاح الإجابة، ولا تتسرّب الصحة أيضًا؛ إعادة الإجابة تُحدِّث السجل السابق.</span></span>
+          </div></li>
+          <li><div class="step-body">
+            <b><span class="lang-en">Review the session</span><span class="lang-ar">راجع الجلسة</span></b>
+            <span class="mono">GET /sessions/{id}</span>
+            <span class="detail"><span class="lang-en">the one place correctness (<span class="mono">is_correct</span>) becomes visible.</span><span class="lang-ar">المكان الوحيد الذي تظهر فيه صحة الإجابة (<span class="mono">is_correct</span>).</span></span>
+          </div></li>
+          <li><div class="step-body">
+            <b><span class="lang-en">Get evaluated</span><span class="lang-ar">احصل على تقييم</span></b>
+            <span class="mono">POST /sessions/{id}/evaluate</span>
+            <span class="detail"><span class="lang-en">an OSCE-style score and per-criterion feedback, generated fresh each call.</span><span class="lang-ar">علامة بأسلوب OSCE وملاحظات لكل معيار، تُولَّد من جديد في كل استدعاء.</span></span>
+          </div></li>
+        </ol>
+      </section>
+
+      <section id="api-reference">
+        <h2><span class="sec-no">06</span> <span class="lang-en">API Reference</span><span class="lang-ar">مرجع الـ API</span></h2>
+        <p>
+          <span class="lang-en">All 14 endpoints. Full request/response examples with copy-paste <code>curl</code> live in <code>docs/api-guide.html</code>.</span>
+          <span class="lang-ar">كل نقاط النهاية الـ14. أمثلة كاملة للطلب/الاستجابة مع curl جاهزة للنسخ موجودة في <code>docs/api-guide.html</code>.</span>
+        </p>
+        <div class="table-scroll">
+          <table class="api-ref">
+            <thead><tr>
+              <th><span class="lang-en">Method</span><span class="lang-ar">الطريقة</span></th>
+              <th><span class="lang-en">Path</span><span class="lang-ar">المسار</span></th>
+              <th><span class="lang-en">Notes</span><span class="lang-ar">ملاحظات</span></th>
+            </tr></thead>
+            <tbody>
+              <tr><td><span class="method get">GET</span></td><td class="path">/health</td><td><span class="lang-en">real DB connectivity check, not just process liveness</span><span class="lang-ar">فحص اتصال فعلي بقاعدة البيانات، لا مجرد بقاء العملية</span></td></tr>
+              <tr><td><span class="method get">GET</span></td><td class="path">/scenarios</td><td><span class="lang-en">id/name only</span><span class="lang-ar">المعرّف والاسم فقط</span></td></tr>
+              <tr><td><span class="method get">GET</span></td><td class="path">/scenarios/{id}/questions</td><td><span class="lang-en">choices only, no answer key</span><span class="lang-ar">الخيارات فقط، بلا مفتاح إجابة</span></td></tr>
+              <tr><td><span class="method get">GET</span></td><td class="path">/test-categories</td><td></td></tr>
+              <tr><td><span class="method get">GET</span></td><td class="path">/test-categories/{id}/tests</td><td><span class="lang-en">menu only, no result</span><span class="lang-ar">القائمة فقط، بلا نتيجة</span></td></tr>
+              <tr><td><span class="method post">POST</span></td><td class="path">/sessions</td><td><span class="lang-en">→ session_id</span><span class="lang-ar">يُعيد session_id</span></td></tr>
+              <tr><td><span class="method get">GET</span></td><td class="path">/sessions/{id}</td><td><span class="lang-en">full review, correctness included</span><span class="lang-ar">مراجعة كاملة، تشمل الصحة</span></td></tr>
+              <tr><td><span class="method post">POST</span></td><td class="path">/sessions/{id}/messages</td><td><span class="lang-en">text chat turn (Qwen or stub)</span><span class="lang-ar">دورة محادثة نصية (Qwen أو نسخة وهمية)</span></td></tr>
+              <tr><td><span class="method post">POST</span></td><td class="path">/sessions/{id}/tests</td><td><span class="lang-en">orders a test, reveals its result</span><span class="lang-ar">يطلب فحصًا ويكشف نتيجته</span></td></tr>
+              <tr><td><span class="method post">POST</span></td><td class="path">/sessions/{id}/answers</td><td><span class="lang-en">no correctness leak; upserts</span><span class="lang-ar">بلا تسريب للصحة؛ يُحدِّث السجل السابق</span></td></tr>
+              <tr><td><span class="method post">POST</span></td><td class="path">/sessions/{id}/evaluate</td><td><span class="lang-en">OSCE score; 400 with no gold_standard</span><span class="lang-ar">علامة OSCE؛ 400 عند غياب gold_standard</span></td></tr>
+              <tr><td><span class="method post">POST</span></td><td class="path">/transcribe</td><td><span class="lang-en">audio → text</span><span class="lang-ar">يحوّل الصوت إلى نص</span></td></tr>
+              <tr><td><span class="method post">POST</span></td><td class="path">/sessions/{id}/chat-voice</td><td><span class="lang-en">audio → transcript + reply + reply audio</span><span class="lang-ar">يحوّل الصوت إلى نص مفرّغ + رد + صوت الرد</span></td></tr>
+              <tr><td><span class="method ws">WS</span></td><td class="path">/ws/voice?session_id=...</td><td><span class="lang-en">same pipeline, one utterance per binary frame</span><span class="lang-ar">نفس خط الأنابيب، نطق واحد لكل إطار ثنائي</span></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="principles">
+        <h2><span class="sec-no">07</span> <span class="lang-en">Design Principles</span><span class="lang-ar">مبادئ التصميم</span></h2>
+        <p>
+          <span class="lang-en">The rules that repeat across every feature above, not just the first one:</span>
+          <span class="lang-ar">القواعد التي تتكرر عبر كل ميزة أعلاه، لا الميزة الأولى فقط:</span>
+        </p>
+        <div class="principles">
+          <div class="principle">
+            <span class="p-icon">01 · <span class="lang-en">Ports &amp; Adapters</span><span class="lang-ar">المنافذ والمحوّلات</span></span>
+            <p><span class="lang-en">Every external capability — LLM reply, evaluation, STT, TTS — is an abstract interface in <code>domain/</code> with a free stub and a real implementation in <code>infrastructure/</code>, picked by one <code>Settings</code> field.</span>
+            <span class="lang-ar">كل قدرة خارجية — رد النموذج اللغوي، التقييم، تحويل الكلام لنص، تحويل النص لكلام — واجهة مجرّدة في <code>domain/</code> لها نسخة وهمية مجانية وتنفيذ حقيقي في <code>infrastructure/</code>، يُختار عبر حقل واحد في <code>Settings</code>.</span></p>
+          </div>
+          <div class="principle">
+            <span class="p-icon">02 · <span class="lang-en">Graceful degradation</span><span class="lang-ar">تدهور رشيق</span></span>
+            <p><span class="lang-en">Every real adapter catches its own failures and falls back to its stub sibling. Nothing in this backend crashes a request because a model failed to load.</span>
+            <span class="lang-ar">كل محوّل حقيقي يلتقط أخطاءه الخاصة ويعود إلى نظيره الوهمي. لا شيء في هذه الواجهة الخلفية يُسقط طلبًا بسبب فشل تحميل نموذج.</span></p>
+          </div>
+          <div class="principle">
+            <span class="p-icon">03 · <span class="lang-en">One transaction, one outcome</span><span class="lang-ar">معاملة واحدة، نتيجة واحدة</span></span>
+            <p><span class="lang-en">Every mutating use case opens <code>async with uow:</code> once and commits once. A failure partway through rolls back — never a partial write.</span>
+            <span class="lang-ar">كل حالة استخدام معدِّلة تفتح <code>async with uow:</code> مرة واحدة وتُنفِّذ commit مرة واحدة. أي فشل في المنتصف يُلغي التغييرات — لا كتابة جزئية أبدًا.</span></p>
+          </div>
+          <div class="principle">
+            <span class="p-icon">04 · <span class="lang-en">No premature leaks</span><span class="lang-ar">لا تسريب مبكر</span></span>
+            <p><span class="lang-en">Case text, gold standards, test results, answer keys, and answer correctness are each returned by exactly one action — never earlier.</span>
+            <span class="lang-ar">نص الحالة، والمعايير المرجعية، ونتائج الفحوصات، ومفاتيح الإجابات، وصحة الإجابات — كل منها يُعاد عبر إجراء واحد فقط، لا قبله أبدًا.</span></p>
+          </div>
+          <div class="principle">
+            <span class="p-icon">05 · <span class="lang-en">Enforced, not promised</span><span class="lang-ar">مُنفَّذ لا مجرد وعد</span></span>
+            <p><span class="lang-en"><code>test_architecture_boundaries.py</code> statically checks every file in <code>domain/</code> and <code>application/</code> for forbidden imports — a broken layer boundary fails CI, not code review.</span>
+            <span class="lang-ar"><code>test_architecture_boundaries.py</code> يفحص إحصائيًا كل ملف ضمن <code>domain/</code> و<code>application/</code> بحثًا عن استيرادات محظورة — أي خرق لحدود الطبقات يُفشل الاختبار الآلي، لا مراجعة الكود فقط.</span></p>
+          </div>
+          <div class="principle">
+            <span class="p-icon">06 · <span class="lang-en">Convention over literal spec</span><span class="lang-ar">الاتفاقية أولى من نص الطلب</span></span>
+            <p><span class="lang-en">Where a feature request's literal wording conflicted with an established pattern (a flat route vs. session-nesting, a bare exception vs. the domain-error hierarchy), the existing convention won — each time, documented in place.</span>
+            <span class="lang-ar">حين تعارضت الصياغة الحرفية لطلب ميزة ما مع نمط قائم فعلاً (مسار مسطّح مقابل تعشيش داخل الجلسة، استثناء مجرّد مقابل هرمية أخطاء النطاق)، انتصرت الاتفاقية القائمة — في كل مرة، وموثَّقة في مكانها.</span></p>
+          </div>
+        </div>
+      </section>
+
+      <section id="testing">
+        <h2><span class="sec-no">08</span> <span class="lang-en">Testing &amp; Verification</span><span class="lang-ar">الاختبار والتحقق</span></h2>
+        <p>
+          <span class="lang-en">52 tests across 8 files, all fast (~20–30s) because the shared fixtures default every ML/audio port to its stub:</span>
+          <span class="lang-ar">52 اختبارًا عبر 8 ملفات، جميعها سريعة (~20–30 ثانية) لأن التركيبات المشتركة تجعل كل منفذ تعلّم آلي/صوت يستخدم نسخته الوهمية افتراضيًا:</span>
+        </p>
+        <div class="code-label">pytest -q</div>
+        <pre class="code">tests/test_all_endpoints_e2e.py      <span class="c"># 2  -- full 11-endpoint flow, real seed_data</span>
+tests/test_architecture_boundaries.py <span class="c"># 21 -- layer-boundary enforcement</span>
+tests/test_evaluation.py             <span class="c"># 5  -- OSCE evaluation</span>
+tests/test_qwen_patient_generator.py <span class="c"># 4  -- real Qwen model, self-skips if unavailable</span>
+tests/test_scenarios.py              <span class="c"># 7  -- no-leak rules</span>
+tests/test_sessions_flow.py          <span class="c"># 5  -- core session/DB flow</span>
+tests/test_voice.py                  <span class="c"># 8  -- STT/TTS ports, REST + both WS scenarios</span></pre>
+        <p style="margin-top:1rem">
+          <span class="lang-en">Two things worth calling out. First, every ML-backed test (Qwen, Whisper) exercises
+          the <em>real</em> model and self-skips — never fails — when the model or its
+          dependencies aren't available, so the suite stays green in constrained environments
+          without losing real coverage where it is available. Second, every feature in this
+          report was also checked against a real running <code>uvicorn</code> server with
+          <code>curl</code> and, for the WebSocket route, a real WS client script — not just
+          the test harness — before being called done.</span>
+          <span class="lang-ar">أمران يستحقان الذكر. أولاً، كل اختبار مدعوم بتعلّم آلي (Qwen، Whisper) يُشغّل
+          النموذج <em>الحقيقي</em> فعليًا ويتخطّى نفسه تلقائيًا — لا يفشل أبدًا — إن لم يتوفر النموذج
+          أو اعتمادياته، فتبقى الحزمة خضراء في البيئات المقيَّدة دون خسارة تغطية حقيقية حيث تتوفر.
+          ثانيًا، كل ميزة في هذا التقرير جرى التحقق منها أيضًا مقابل خادم <code>uvicorn</code> فعلي
+          يعمل، باستخدام curl، ولمسار WebSocket سكربت عميل WS حقيقي — لا الاعتماد على حزمة الاختبار
+          وحدها — قبل اعتبارها منجزة.</span>
+        </p>
+      </section>
+
+      <section id="setup">
+        <h2><span class="sec-no">09</span> <span class="lang-en">Setup</span><span class="lang-ar">الإعداد</span></h2>
+        <pre class="code">.\venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+copy .env.example .env
+
+alembic upgrade head
+python -m app.infrastructure.seed seed_data
+
+uvicorn app.main:app --reload   <span class="c"># http://127.0.0.1:8000/docs</span>
+pytest</pre>
+      </section>
+
+    </main>
+  </div>
+
+  <footer>
+    <div class="wrap">
+      <p>
+        <span class="lang-en">Full setup, configuration, and layer-boundary details live in <code>README.md</code>.
+        A step-by-step, Arabic-language endpoint-testing walkthrough with copy-paste
+        <code>curl</code> examples lives in <code>docs/api-guide.html</code>.</span>
+        <span class="lang-ar">الإعداد الكامل، والتهيئة، وتفاصيل حدود الطبقات موجودة في
+        <code>README.md</code>. دليل خطوة بخطوة باللغة العربية لاختبار كل نقطة نهاية بأمثلة curl
+        جاهزة للنسخ موجود في <code>docs/api-guide.html</code>.</span>
+      </p>
+    </div>
+  </footer>
+
+</div>
+
+<script>
+  function setLang(lang){
+    try{
+      var page = document.getElementById('page');
+      if(lang === 'ar'){
+        page.classList.add('ar-mode');
+      } else {
+        page.classList.remove('ar-mode');
+      }
+      document.querySelectorAll('[data-lang-btn]').forEach(function(btn){
+        btn.classList.toggle('active', btn.getAttribute('data-lang-btn') === lang);
+      });
+      try { localStorage.setItem('psi-lang', lang); } catch(e){}
+    }catch(e){ /* no-op */ }
+  }
+
+  (function(){
+    try{
+      var saved = null;
+      try { saved = localStorage.getItem('psi-lang'); } catch(e){}
+      if(saved === 'ar'){ setLang('ar'); }
+    }catch(e){ /* default to English */ }
+
+    var links = Array.prototype.slice.call(document.querySelectorAll('.navlink'));
+    var targets = links
+      .map(function(l){ return document.querySelector(l.getAttribute('href')); })
+      .filter(Boolean);
+    if(!('IntersectionObserver' in window) || targets.length === 0) return;
+
+    var byId = {};
+    links.forEach(function(l){ byId[l.getAttribute('href').slice(1)] = l; });
+
+    var observer = new IntersectionObserver(function(entries){
+      entries.forEach(function(entry){
+        var link = byId[entry.target.id];
+        if(!link) return;
+        if(entry.isIntersecting){
+          links.forEach(function(l){ l.classList.remove('active'); });
+          link.classList.add('active');
+        }
+      });
+    }, { rootMargin: '-10% 0px -70% 0px', threshold: 0 });
+
+    targets.forEach(function(t){ observer.observe(t); });
+  })();
+</script>

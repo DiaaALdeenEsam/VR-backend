@@ -1,0 +1,634 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>VR 1.1 — Database Explorer</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root{
+    --bg:#f5f6f8;
+    --panel:#ffffff;
+    --panel-2:#fafbfc;
+    --border:#e3e6ea;
+    --text:#1c2128;
+    --text-dim:#5b6472;
+    --text-faint:#8a919c;
+    --accent:#3457d5;
+    --accent-soft:#e8ecfd;
+    --good:#1a7f4e;
+    --good-soft:#e5f6ee;
+    --bad:#c4362b;
+    --bad-soft:#fbe9e7;
+    --code-bg:#f0f2f5;
+    --shadow:0 1px 2px rgba(20,25,35,.06), 0 1px 1px rgba(20,25,35,.04);
+    --radius:10px;
+    font-family:-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --bg:#14161a;
+      --panel:#1c1f25;
+      --panel-2:#20242b;
+      --border:#2c313a;
+      --text:#e7e9ec;
+      --text-dim:#a3aab5;
+      --text-faint:#6d7480;
+      --accent:#7d93ff;
+      --accent-soft:#232a45;
+      --good:#4fd497;
+      --good-soft:#173327;
+      --bad:#ff8a80;
+      --bad-soft:#3a1f1d;
+      --code-bg:#22262d;
+      --shadow:0 1px 2px rgba(0,0,0,.3);
+    }
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--text);}
+  body{font-size:14px;line-height:1.5;}
+  a{color:var(--accent);}
+
+  .app{display:flex;min-height:100vh;}
+
+  /* Sidebar */
+  .sidebar{
+    width:240px;flex:0 0 240px;background:var(--panel);
+    border-right:1px solid var(--border);
+    padding:20px 0;position:sticky;top:0;height:100vh;overflow-y:auto;
+  }
+  .brand{padding:0 20px 16px;border-bottom:1px solid var(--border);margin-bottom:12px;}
+  .brand .name{font-weight:700;font-size:15px;letter-spacing:.2px;}
+  .brand .sub{color:var(--text-faint);font-size:12px;margin-top:2px;}
+  .nav-group{margin-bottom:14px;}
+  .nav-label{padding:6px 20px;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--text-faint);font-weight:600;}
+  .nav-item{
+    display:flex;align-items:center;justify-content:space-between;gap:8px;
+    padding:8px 20px;cursor:pointer;color:var(--text-dim);font-size:13.5px;
+    border-left:3px solid transparent;
+  }
+  .nav-item:hover{background:var(--panel-2);color:var(--text);}
+  .nav-item.active{background:var(--accent-soft);color:var(--accent);border-left-color:var(--accent);font-weight:600;}
+  .nav-item .count{
+    font-size:11px;color:var(--text-faint);background:var(--panel-2);
+    border:1px solid var(--border);border-radius:20px;padding:1px 7px;min-width:18px;text-align:center;
+  }
+  .nav-item.active .count{color:var(--accent);border-color:var(--accent-soft);}
+
+  /* Main */
+  .main{flex:1;min-width:0;padding:28px 36px 60px;max-width:1180px;}
+  .page-head{margin-bottom:22px;}
+  .page-head h1{margin:0 0 4px;font-size:20px;}
+  .page-head p{margin:0;color:var(--text-dim);font-size:13.5px;}
+
+  .panel{
+    background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);
+    box-shadow:var(--shadow);margin-bottom:20px;overflow:hidden;
+  }
+  .panel-head{
+    padding:12px 16px;border-bottom:1px solid var(--border);
+    display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;
+  }
+  .panel-head h2{margin:0;font-size:14.5px;}
+  .panel-head .meta{font-size:12px;color:var(--text-faint);}
+  .panel-body{padding:16px;}
+
+  /* Overview cards */
+  .stat-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px;margin-bottom:22px;}
+  .stat-card{
+    background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);
+    padding:14px 16px;box-shadow:var(--shadow);cursor:pointer;transition:transform .1s;
+  }
+  .stat-card:hover{transform:translateY(-1px);border-color:var(--accent);}
+  .stat-card .n{font-size:24px;font-weight:700;color:var(--accent);}
+  .stat-card .l{font-size:12.5px;color:var(--text-dim);margin-top:2px;}
+
+  table{width:100%;border-collapse:collapse;font-size:13.5px;}
+  thead th{
+    text-align:left;padding:8px 10px;background:var(--panel-2);color:var(--text-faint);
+    font-size:11px;text-transform:uppercase;letter-spacing:.04em;border-bottom:1px solid var(--border);
+    position:sticky;top:0;white-space:nowrap;
+  }
+  tbody td{padding:9px 10px;border-bottom:1px solid var(--border);vertical-align:top;}
+  tbody tr:last-child td{border-bottom:none;}
+  tbody tr:hover{background:var(--panel-2);}
+  .table-scroll{overflow-x:auto;}
+  .cell-id{color:var(--text-faint);font-variant-numeric:tabular-nums;font-size:12.5px;}
+  .cell-mono{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:12px;color:var(--text-dim);}
+  .cell-text{max-width:420px;}
+  .badge{
+    display:inline-block;padding:2px 8px;border-radius:20px;font-size:11.5px;font-weight:600;
+  }
+  .badge.good{background:var(--good-soft);color:var(--good);}
+  .badge.bad{background:var(--bad-soft);color:var(--bad);}
+  .badge.role-user{background:var(--accent-soft);color:var(--accent);}
+  .badge.role-assistant{background:var(--good-soft);color:var(--good);}
+  .pill{
+    display:inline-block;padding:1px 8px;border-radius:6px;font-size:11.5px;
+    background:var(--code-bg);color:var(--text-dim);border:1px solid var(--border);
+  }
+  .fk{color:var(--accent);text-decoration:none;font-weight:600;cursor:pointer;}
+  .fk:hover{text-decoration:underline;}
+
+  input.search{
+    background:var(--panel-2);border:1px solid var(--border);border-radius:8px;
+    padding:6px 10px;font-size:13px;color:var(--text);min-width:200px;
+  }
+  input.search:focus{outline:2px solid var(--accent-soft);border-color:var(--accent);}
+
+  /* Schema diagram */
+  .schema-wrap{overflow-x:auto;}
+  .schema{display:block;margin:0 auto;}
+  .erd-box rect{fill:var(--panel);stroke:var(--border);}
+  .erd-box text.title{fill:var(--text);font-weight:700;}
+  .erd-box text.field{fill:var(--text-dim);}
+  .erd-box text.pk{fill:var(--accent);font-weight:600;}
+  .erd-line{stroke:var(--text-faint);stroke-width:1.3;fill:none;}
+
+  /* Case review */
+  .case-card{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);margin-bottom:18px;}
+  .case-card h3{margin:0;padding:12px 16px;border-bottom:1px solid var(--border);font-size:14px;}
+  .case-card .body{padding:14px 16px;}
+  .arabic{direction:rtl;text-align:right;font-family:"Segoe UI",Tahoma,Arial,sans-serif;}
+  .kv{display:grid;grid-template-columns:130px 1fr;gap:6px 14px;font-size:13.5px;}
+  .kv dt{color:var(--text-faint);}
+  .kv dd{margin:0;}
+  .chat-msg{border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin-bottom:10px;}
+  .chat-msg .head{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;}
+  .chat-msg .ts{font-size:11px;color:var(--text-faint);}
+  .qa-item{border:1px solid var(--border);border-radius:10px;padding:12px 14px;margin-bottom:10px;}
+  .qa-item .q{font-weight:600;margin-bottom:8px;}
+  .choice-row{display:flex;align-items:center;gap:8px;padding:4px 0;font-size:13px;}
+  .choice-row .dot{width:8px;height:8px;border-radius:50%;background:var(--border);flex:0 0 8px;}
+  .choice-row.correct .dot{background:var(--good);}
+  .choice-row.picked{font-weight:700;}
+  .choice-row.picked.correct{color:var(--good);}
+  .choice-row.picked:not(.correct){color:var(--bad);}
+  .choice-row.picked:not(.correct) .dot{background:var(--bad);}
+
+  .empty{color:var(--text-faint);font-style:italic;padding:20px;text-align:center;}
+  code.mini{background:var(--code-bg);padding:1px 6px;border-radius:5px;font-size:12px;}
+
+  .view{display:none;}
+  .view.active{display:block;}
+
+  .footer-note{color:var(--text-faint);font-size:12px;margin-top:30px;padding-top:16px;border-top:1px solid var(--border);}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <nav class="sidebar">
+    <div class="brand">
+      <div class="name">VR 1.1 · backend</div>
+      <div class="sub">SQLite database explorer</div>
+    </div>
+
+    <div class="nav-group">
+      <div class="nav-label">Overview</div>
+      <div class="nav-item active" data-view="overview">Dashboard <span class="count" id="cnt-overview">10</span></div>
+      <div class="nav-item" data-view="case">Case review</div>
+    </div>
+
+    <div class="nav-group">
+      <div class="nav-label">Tables</div>
+      <div class="nav-item" data-view="scenarios">Scenarios <span class="count" data-cnt="scenarios"></span></div>
+      <div class="nav-item" data-view="questions">Questions <span class="count" data-cnt="questions"></span></div>
+      <div class="nav-item" data-view="choices">Choices <span class="count" data-cnt="choices"></span></div>
+      <div class="nav-item" data-view="sessions">Sessions <span class="count" data-cnt="sessions"></span></div>
+      <div class="nav-item" data-view="messages">Messages <span class="count" data-cnt="messages"></span></div>
+      <div class="nav-item" data-view="test_categories">Test categories <span class="count" data-cnt="test_categories"></span></div>
+      <div class="nav-item" data-view="tests">Tests <span class="count" data-cnt="tests"></span></div>
+      <div class="nav-item" data-view="ordered_tests">Ordered tests <span class="count" data-cnt="ordered_tests"></span></div>
+      <div class="nav-item" data-view="answers">Answers <span class="count" data-cnt="answers"></span></div>
+      <div class="nav-item" data-view="alembic_version">Alembic version <span class="count" data-cnt="alembic_version"></span></div>
+    </div>
+
+    <div class="nav-group">
+      <div class="nav-label">Raw</div>
+      <div class="nav-item" data-view="raw">JSON dump</div>
+    </div>
+  </nav>
+
+  <main class="main">
+
+    <!-- OVERVIEW -->
+    <section class="view active" id="view-overview">
+      <div class="page-head">
+        <h1>Database overview</h1>
+        <p>SQLite file <code class="mini">app.db</code> · schema version <code class="mini" id="ov-version">—</code> · 10 tables</p>
+      </div>
+
+      <div class="stat-grid" id="stat-grid"></div>
+
+      <div class="panel">
+        <div class="panel-head"><h2>Schema &amp; relationships</h2><span class="meta">foreign keys shown as arrows</span></div>
+        <div class="panel-body schema-wrap">
+          <svg class="schema" id="erd" width="1080" height="620" viewBox="0 0 1080 620" xmlns="http://www.w3.org/2000/svg"></svg>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head"><h2>What this data is</h2></div>
+        <div class="panel-body">
+          <p style="margin:0 0 10px;color:var(--text-dim)">
+            This is a clinical-training VR simulator database. A <strong>scenario</strong> describes a patient
+            case (in Arabic) with a hidden <strong>gold standard</strong> diagnosis. A trainee opens a
+            <strong>session</strong> against a scenario, chats with a simulated patient (<strong>messages</strong>),
+            orders lab/imaging <strong>tests</strong> (grouped into <strong>test categories</strong>, recorded as
+            <strong>ordered_tests</strong>), and answers multiple-choice <strong>questions</strong> built from
+            <strong>choices</strong>, with each attempt logged in <strong>answers</strong>.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <!-- CASE REVIEW -->
+    <section class="view" id="view-case">
+      <div class="page-head">
+        <h1>Case review</h1>
+        <p>Every session, reconstructed end-to-end from its linked rows across all tables</p>
+      </div>
+      <div id="case-content"></div>
+    </section>
+
+    <!-- Generic table views injected here -->
+    <section class="view" id="view-generic-host"></section>
+
+    <!-- RAW -->
+    <section class="view" id="view-raw">
+      <div class="page-head">
+        <h1>Raw JSON dump</h1>
+        <p>Full export of every table, exactly as read from <code class="mini">app.db</code></p>
+      </div>
+      <div class="panel">
+        <div class="panel-body">
+          <pre id="raw-json" style="white-space:pre-wrap;word-break:break-word;font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:12.5px;line-height:1.6;margin:0;"></pre>
+        </div>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<script>
+const DB = {
+  "alembic_version": [
+    { "version_num": "0001" }
+  ],
+  "answers": [
+    { "id": 1, "session_id": "7967d128-f4e6-4971-8bb3-b9195cf0276f", "question_id": 1, "choice_id": 1, "is_correct": 1, "answered_at": "2026-08-25 06:42:43.381753" }
+  ],
+  "choices": [
+    { "id": 1, "question_id": 1, "text": "متلازمة إكليلية حادة (احتشاء عضلة القلب)" },
+    { "id": 2, "question_id": 1, "text": "التهاب المعدة" },
+    { "id": 3, "question_id": 1, "text": "نوبة قلق" },
+    { "id": 4, "question_id": 1, "text": "التهاب رئوي" },
+    { "id": 5, "question_id": 2, "text": "تخطيط قلب فوري (ECG)" },
+    { "id": 6, "question_id": 2, "text": "إعطاء مضاد حيوي" },
+    { "id": 7, "question_id": 2, "text": "تحويل المريض للمنزل" },
+    { "id": 8, "question_id": 2, "text": "طلب أشعة مقطعية على البطن" }
+  ],
+  "messages": [
+    { "id": 1, "session_id": "7967d128-f4e6-4971-8bb3-b9195cf0276f", "role": "user", "content": "السلام عليكم", "created_at": "2026-08-25 06:43:51.389908" },
+    { "id": 2, "session_id": "7967d128-f4e6-4971-8bb3-b9195cf0276f", "role": "assistant", "content": "بسم الله الرحمن الرحيم\n\nتُعرف حالة الرأس المتراوزات بـ\"الألم الضجيج\" بسبب حدوث نقل داخلي للعضلات، وهو ما يحدث نتيجة سلوك الدماغ الذي يتسبب بأذنب الغموض والقلق. قد يكون هذا الألم مرتبطة أيضاً بالأعراض الأخرى مثل الأرق والتعب والرغبة في الهواء الدافئ. \n\nمن المهم البحث عن العلاج المناسب", "created_at": "2026-08-25 06:44:20.748428" },
+    { "id": 3, "session_id": "7967d128-f4e6-4971-8bb3-b9195cf0276f", "role": "user", "content": "هل كان عند الدكتور في راسف وغير نفكرة ومنترح كانت نتجت نقاش من الدكتور وحسين فقال نباية الفكرة نباية الستمر وطالوا عليها بزوني بزوني المالي فايا شسمي يعني انتشعوا للمور كويسور هل كان عند الدكتور انسلمه؟ ومنترح كان عند الدكتور", "created_at": "2026-08-25 06:45:29.062235" },
+    { "id": 4, "session_id": "7967d128-f4e6-4971-8bb3-b9195cf0276f", "role": "assistant", "content": "نعم، عند الدكتور كان فيصل، ومرحباً بك! أنا هنا لمساعدتك في التعامل مع هذه الحالات الطبية التي تتطلب استشارة الطبيب المعتاد. إذا كنت تحتاج إلى المزيد من المعلومات حول هذه المشكلة، فلا تتردد في طرح أسئلتك. كما أنني مستعد للمساعدة في تقديم المساعدة والمعلومات اللازمة لك.", "created_at": "2026-08-25 06:45:46.026615" }
+  ],
+  "ordered_tests": [
+    { "id": 1, "session_id": "7967d128-f4e6-4971-8bb3-b9195cf0276f", "test_id": 1, "ordered_at": "2026-08-25 06:42:18.746004" }
+  ],
+  "questions": [
+    { "id": 1, "scenario_id": 1, "text": "ما هو التشخيص الأكثر احتمالاً؟", "correct_choice_id": 1 },
+    { "id": 2, "scenario_id": 1, "text": "ما هو أول إجراء يجب اتخاذه؟", "correct_choice_id": 5 }
+  ],
+  "scenarios": [
+    { "id": 1, "name": "ألم في الصدر - رجل عمره 55 عامًا", "case_text": "رجل يبلغ من العمر 55 عامًا، مدخّن، يعاني من ألم ضاغط في منتصف الصدر منذ ساعة، يمتد إلى الذراع اليسرى، مصحوب بتعرّق وغثيان. لا يوجد تاريخ مرضي معروف لأمراض القلب سابقًا.", "gold_standard": "احتمال متلازمة إكليلية حادة (ACS) - يستدعي تخطيط قلب فوري وتروبونين." },
+    { "id": 2, "name": "حمى وسعال - طفلة عمرها 6 سنوات", "case_text": "طفلة عمرها 6 سنوات، حرارتها 39 درجة منذ يومين، مع سعال جاف وضيق تنفس خفيف. الأم تذكر أن الطفلة تأكل وتشرب بشكل طبيعي ولا يوجد طفح جلدي.", "gold_standard": "احتمال التهاب رئوي فيروسي أو بكتيري - يستدعي فحص صدر سريري وربما أشعة." }
+  ],
+  "sessions": [
+    { "id": "7967d128-f4e6-4971-8bb3-b9195cf0276f", "scenario_id": 1, "created_at": "2026-08-25 06:41:19.504065" }
+  ],
+  "test_categories": [
+    { "id": 1, "name": "تحاليل مخبرية" },
+    { "id": 2, "name": "أشعة وتصوير" }
+  ],
+  "tests": [
+    { "id": 1, "category_id": 1, "name": "تروبونين", "result": "مرتفع: 0.8 ng/mL (طبيعي < 0.04)" },
+    { "id": 2, "category_id": 1, "name": "تعداد دم كامل (CBC)", "result": "ضمن الحدود الطبيعية" },
+    { "id": 3, "category_id": 2, "name": "تخطيط قلب (ECG)", "result": "ارتفاع في الجزء ST بالاشتقاقات السفلية" },
+    { "id": 4, "category_id": 2, "name": "أشعة صدر", "result": "لا يوجد احتقان رئوي واضح" }
+  ]
+};
+
+// ---------- helpers ----------
+const $ = (sel, el=document) => el.querySelector(sel);
+const $$ = (sel, el=document) => Array.from(el.querySelectorAll(sel));
+const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const isArabic = s => /[؀-ۿ]/.test(String(s||''));
+const cellText = s => `<span class="${isArabic(s)?'arabic':''}">${esc(s)}</span>`;
+const byId = (arr, id) => arr.find(r => r.id === id);
+const fmtDate = s => { if(!s) return ''; const d = new Date(s.replace(' ','T')+'Z'); return isNaN(d) ? s : d.toLocaleString(undefined,{year:'numeric',month:'short',day:'2-digit',hour:'2-digit',minute:'2-digit'}); };
+
+const TABLE_LABEL = {
+  scenarios:'Scenarios', questions:'Questions', choices:'Choices', sessions:'Sessions',
+  messages:'Messages', test_categories:'Test categories', tests:'Tests',
+  ordered_tests:'Ordered tests', answers:'Answers', alembic_version:'Alembic version'
+};
+
+// ---------- nav counts ----------
+Object.keys(TABLE_LABEL).forEach(t=>{
+  const el = document.querySelector(`[data-cnt="${t}"]`);
+  if(el) el.textContent = DB[t] ? DB[t].length : 0;
+});
+$('#ov-version').textContent = DB.alembic_version[0]?.version_num ?? '—';
+
+// ---------- overview stat cards ----------
+const STAT_ORDER = ['scenarios','questions','choices','sessions','messages','test_categories','tests','ordered_tests','answers'];
+const statGrid = $('#stat-grid');
+STAT_ORDER.forEach(t=>{
+  const card = document.createElement('div');
+  card.className = 'stat-card';
+  card.dataset.view = t;
+  card.innerHTML = `<div class="n">${DB[t].length}</div><div class="l">${TABLE_LABEL[t]}</div>`;
+  card.addEventListener('click', ()=>showView(t));
+  statGrid.appendChild(card);
+});
+
+// ---------- ERD ----------
+function drawERD(){
+  const svg = $('#erd');
+  const boxes = {
+    scenarios:      {x:40,  y:30,  w:200, h:96,  fields:['id (PK)','name','case_text','gold_standard']},
+    questions:       {x:340, y:30,  w:210, h:96,  fields:['id (PK)','scenario_id → scenarios','text','correct_choice_id → choices']},
+    choices:         {x:660, y:30,  w:200, h:78,  fields:['id (PK)','question_id → questions','text']},
+    sessions:        {x:40,  y:220, w:220, h:78,  fields:['id (PK, uuid)','scenario_id → scenarios','created_at']},
+    messages:        {x:360, y:220, w:210, h:96,  fields:['id (PK)','session_id → sessions','role','content','created_at']},
+    answers:         {x:670, y:220, w:220, h:114, fields:['id (PK)','session_id → sessions','question_id → questions','choice_id → choices','is_correct','answered_at']},
+    test_categories: {x:40,  y:430, w:200, h:60,  fields:['id (PK)','name']},
+    tests:           {x:330, y:430, w:210, h:96,  fields:['id (PK)','category_id → test_categories','name','result']},
+    ordered_tests:   {x:640, y:430, w:220, h:96,  fields:['id (PK)','session_id → sessions','test_id → tests','ordered_at']},
+  };
+  const ns = 'http://www.w3.org/2000/svg';
+  const arrow = document.createElementNS(ns,'defs');
+  arrow.innerHTML = `<marker id="arrow" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 z" fill="var(--text-faint)"/></marker>`;
+  svg.appendChild(arrow);
+
+  function box(name, def){
+    const g = document.createElementNS(ns,'g');
+    g.setAttribute('class','erd-box');
+    g.setAttribute('transform', `translate(${def.x},${def.y})`);
+    const rect = document.createElementNS(ns,'rect');
+    rect.setAttribute('width', def.w); rect.setAttribute('height', def.h);
+    rect.setAttribute('rx', 8); rect.setAttribute('stroke-width', 1.2);
+    g.appendChild(rect);
+    const title = document.createElementNS(ns,'text');
+    title.setAttribute('class','title'); title.setAttribute('x',12); title.setAttribute('y',20); title.setAttribute('font-size',12.5);
+    title.textContent = name;
+    g.appendChild(title);
+    const line = document.createElementNS(ns,'line');
+    line.setAttribute('x1',0); line.setAttribute('x2',def.w); line.setAttribute('y1',28); line.setAttribute('y2',28);
+    line.setAttribute('stroke','var(--border)');
+    g.appendChild(line);
+    def.fields.forEach((f,i)=>{
+      const t = document.createElementNS(ns,'text');
+      t.setAttribute('class', f.includes('PK') ? 'pk':'field');
+      t.setAttribute('x',12); t.setAttribute('y', 44 + i*16); t.setAttribute('font-size',11);
+      t.textContent = f;
+      g.appendChild(t);
+    });
+    svg.appendChild(g);
+    def._cx = def.x + def.w/2; def._cy = def.y + def.h/2;
+  }
+  Object.entries(boxes).forEach(([k,v])=>box(k,v));
+
+  function edge(fromKey, toKey){
+    const a = boxes[fromKey], b = boxes[toKey];
+    const x1 = a._cx, y1 = a.y + a.h, x2 = b._cx, y2 = b.y;
+    const path = document.createElementNS(ns,'path');
+    const midY = (y1+y2)/2;
+    let d;
+    if (Math.abs(y1-y2) < 5){
+      // same row, connect sides
+      const sx = a.x < b.x ? a.x+a.w : a.x;
+      const ex = a.x < b.x ? b.x : b.x+b.w;
+      d = `M${sx},${a.y+a.h/2} L${ex},${b.y+b.h/2}`;
+    } else {
+      d = `M${x1},${y1} C${x1},${midY} ${x2},${midY} ${x2},${y2}`;
+    }
+    path.setAttribute('d', d);
+    path.setAttribute('class','erd-line');
+    path.setAttribute('marker-end','url(#arrow)');
+    svg.insertBefore(path, svg.firstChild.nextSibling);
+  }
+  edge('sessions','scenarios');
+  edge('questions','scenarios');
+  edge('messages','sessions');
+  edge('answers','sessions');
+  edge('answers','questions');
+  edge('answers','choices');
+  edge('choices','questions');
+  edge('tests','test_categories');
+  edge('ordered_tests','sessions');
+  edge('ordered_tests','tests');
+}
+drawERD();
+
+// ---------- generic table renderer ----------
+const COLUMNS = {
+  scenarios: ['id','name','case_text','gold_standard'],
+  questions: ['id','scenario_id','text','correct_choice_id'],
+  choices: ['id','question_id','text'],
+  sessions: ['id','scenario_id','created_at'],
+  messages: ['id','session_id','role','content','created_at'],
+  test_categories: ['id','name'],
+  tests: ['id','category_id','name','result'],
+  ordered_tests: ['id','session_id','test_id','ordered_at'],
+  answers: ['id','session_id','question_id','choice_id','is_correct','answered_at'],
+  alembic_version: ['version_num'],
+};
+
+function renderCell(table, col, row){
+  const v = row[col];
+  if (col === 'id' || col === 'version_num') return `<span class="cell-id">${esc(v)}</span>`;
+  if (col.endsWith('_id') && col !== 'id') {
+    let target=null, label=v;
+    if (col==='scenario_id'){ target='scenarios'; const r=byId(DB.scenarios,v); label = r? r.name : v; }
+    else if (col==='question_id'){ target='questions'; const r=byId(DB.questions,v); label = r? r.text : v; }
+    else if (col==='choice_id' || col==='correct_choice_id'){ target='choices'; const r=byId(DB.choices,v); label = r? r.text : v; }
+    else if (col==='category_id'){ target='test_categories'; const r=byId(DB.test_categories,v); label = r? r.name : v; }
+    else if (col==='test_id'){ target='tests'; const r=byId(DB.tests,v); label = r? r.name : v; }
+    if (col==='session_id') return `<span class="cell-mono">${esc(v).slice(0,8)}…</span>`;
+    return `<a class="fk" title="${esc(label)}" data-goto="${target}" data-id="${esc(v)}">#${esc(v)} — ${esc(String(label)).slice(0,40)}${String(label).length>40?'…':''}</a>`;
+  }
+  if (col === 'session_id') return `<span class="cell-mono">${esc(v).slice(0,8)}…</span>`;
+  if (col === 'is_correct') return v ? '<span class="badge good">correct</span>' : '<span class="badge bad">incorrect</span>';
+  if (col === 'role') return `<span class="badge role-${esc(v)}">${esc(v)}</span>`;
+  if (col.endsWith('_at')) return `<span class="cell-mono" title="${esc(v)}">${esc(fmtDate(v))}</span>`;
+  if (col === 'text' || col === 'case_text' || col === 'gold_standard' || col === 'content' || col === 'result' || col === 'name'){
+    return `<div class="cell-text">${cellText(v)}</div>`;
+  }
+  return esc(v ?? '');
+}
+
+function buildTableView(table){
+  const rows = DB[table];
+  const cols = COLUMNS[table];
+  const section = document.createElement('div');
+  section.className = 'view';
+  section.id = `view-${table}`;
+
+  section.innerHTML = `
+    <div class="page-head">
+      <h1>${TABLE_LABEL[table]}</h1>
+      <p><code class="mini">${table}</code> · ${rows.length} row${rows.length===1?'':'s'}</p>
+    </div>
+    <div class="panel">
+      <div class="panel-head">
+        <h2>All rows</h2>
+        <input class="search" type="search" placeholder="Filter…" data-filter="${table}">
+      </div>
+      <div class="panel-body table-scroll">
+        <table>
+          <thead><tr>${cols.map(c=>`<th>${c}</th>`).join('')}</tr></thead>
+          <tbody>
+          ${rows.length ? rows.map(r=>`<tr>${cols.map(c=>`<td>${renderCell(table,c,r)}</td>`).join('')}</tr>`).join('') : `<tr><td colspan="${cols.length}" class="empty">No rows</td></tr>`}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  `;
+  $('#view-generic-host').after(section);
+
+  const input = section.querySelector('input.search');
+  const tbody = section.querySelector('tbody');
+  input.addEventListener('input', ()=>{
+    const q = input.value.trim().toLowerCase();
+    $$('tr', tbody).forEach(tr=>{
+      tr.style.display = tr.textContent.toLowerCase().includes(q) ? '' : 'none';
+    });
+  });
+}
+Object.keys(TABLE_LABEL).forEach(buildTableView);
+
+// FK click-through navigation
+document.addEventListener('click', e=>{
+  const a = e.target.closest('a.fk');
+  if (!a) return;
+  e.preventDefault();
+  showView(a.dataset.goto);
+});
+
+// ---------- case review ----------
+function buildCaseReview(){
+  const host = $('#case-content');
+  if (!DB.sessions.length){ host.innerHTML = '<div class="panel"><div class="empty">No sessions recorded</div></div>'; return; }
+
+  DB.sessions.forEach(session=>{
+    const scenario = byId(DB.scenarios, session.scenario_id);
+    const msgs = DB.messages.filter(m=>m.session_id===session.id).sort((a,b)=>a.id-b.id);
+    const ordered = DB.ordered_tests.filter(o=>o.session_id===session.id);
+    const answers = DB.answers.filter(a=>a.session_id===session.id);
+    const scenarioQuestions = DB.questions.filter(q=>q.scenario_id===session.scenario_id);
+
+    const card = document.createElement('div');
+
+    card.innerHTML = `
+      <div class="case-card">
+        <h3>Session <span class="cell-mono">${esc(session.id)}</span></h3>
+        <div class="body">
+          <dl class="kv">
+            <dt>Started</dt><dd>${esc(fmtDate(session.created_at))}</dd>
+            <dt>Scenario</dt><dd>${scenario ? cellText(scenario.name) : '—'}</dd>
+          </dl>
+        </div>
+      </div>
+
+      ${scenario ? `
+      <div class="case-card">
+        <h3>Scenario · ${esc(scenario.name)}</h3>
+        <div class="body">
+          <div class="kv" style="grid-template-columns:140px 1fr">
+            <dt>Case presentation</dt><dd>${cellText(scenario.case_text)}</dd>
+            <dt>Gold standard</dt><dd>${cellText(scenario.gold_standard || '—')}</dd>
+          </div>
+        </div>
+      </div>` : ''}
+
+      <div class="case-card">
+        <h3>Tests ordered (${ordered.length})</h3>
+        <div class="body">
+          ${ordered.length ? `<div class="table-scroll"><table>
+            <thead><tr><th>Test</th><th>Category</th><th>Result</th><th>Ordered at</th></tr></thead>
+            <tbody>${ordered.map(o=>{
+              const t = byId(DB.tests, o.test_id);
+              const c = t ? byId(DB.test_categories, t.category_id) : null;
+              return `<tr>
+                <td>${t?cellText(t.name):'—'}</td>
+                <td>${c?cellText(c.name):'—'}</td>
+                <td>${t?cellText(t.result):'—'}</td>
+                <td class="cell-mono">${esc(fmtDate(o.ordered_at))}</td>
+              </tr>`;
+            }).join('')}</tbody>
+          </table></div>` : '<div class="empty">No tests ordered in this session</div>'}
+        </div>
+      </div>
+
+      <div class="case-card">
+        <h3>Conversation (${msgs.length} messages)</h3>
+        <div class="body">
+          ${msgs.length ? msgs.map(m=>`
+            <div class="chat-msg">
+              <div class="head">
+                <span class="badge role-${esc(m.role)}">${esc(m.role)}</span>
+                <span class="ts">${esc(fmtDate(m.created_at))}</span>
+              </div>
+              <div class="arabic">${esc(m.content).replace(/\n/g,'<br>')}</div>
+            </div>
+          `).join('') : '<div class="empty">No messages</div>'}
+        </div>
+      </div>
+
+      <div class="case-card">
+        <h3>Question attempts (${scenarioQuestions.length})</h3>
+        <div class="body">
+          ${scenarioQuestions.length ? scenarioQuestions.map(q=>{
+            const qChoices = DB.choices.filter(c=>c.question_id===q.id);
+            const attempt = answers.find(a=>a.question_id===q.id);
+            return `<div class="qa-item">
+              <div class="q arabic">${esc(q.text)}</div>
+              ${qChoices.map(c=>{
+                const isCorrect = c.id === q.correct_choice_id;
+                const isPicked = attempt && attempt.choice_id === c.id;
+                return `<div class="choice-row ${isCorrect?'correct':''} ${isPicked?'picked':''}">
+                  <span class="dot"></span><span class="arabic">${esc(c.text)}</span>
+                  ${isCorrect?'<span class="badge good" style="margin-left:6px">gold answer</span>':''}
+                  ${isPicked?`<span class="badge ${attempt.is_correct?'good':'bad'}" style="margin-left:6px">trainee picked</span>`:''}
+                </div>`;
+              }).join('')}
+              ${!attempt ? '<div class="empty" style="text-align:left;padding:8px 0">Not answered in this session</div>':''}
+            </div>`;
+          }).join('') : '<div class="empty">No questions defined for this scenario</div>'}
+        </div>
+      </div>
+    `;
+    host.appendChild(card);
+  });
+}
+buildCaseReview();
+
+// ---------- raw json ----------
+$('#raw-json').textContent = JSON.stringify(DB, null, 2);
+
+// ---------- nav ----------
+function showView(name){
+  $$('.view').forEach(v=>v.classList.remove('active'));
+  const target = document.getElementById(`view-${name}`);
+  if (target) target.classList.add('active');
+  $$('.nav-item').forEach(n=>n.classList.toggle('active', n.dataset.view===name));
+}
+$$('.nav-item').forEach(item=>{
+  item.addEventListener('click', ()=> showView(item.dataset.view));
+});
+</script>
+</body>
+</html>

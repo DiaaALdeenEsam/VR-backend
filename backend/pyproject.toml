@@ -1,0 +1,10 @@
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+testpaths = ["tests"]
+filterwarnings = [
+    # SQLModel nags to use session.exec() over session.execute() for every call,
+    # but exec() doesn't support raw text() statements -- execute() is correct
+    # for the health check's `SELECT 1` probe.
+    "ignore:(?s).*session\\.exec.*:DeprecationWarning",
+]

@@ -1,0 +1,1009 @@
+<title>دليل API محاكي المريض</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@700;800;900&family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+
+  /* ---------- tokens: light (default) ---------- */
+  :root{
+    --ink:#16211F;
+    --ink-soft:#4B5956;
+    --paper:#F6F5F1;
+    --surface:#FFFFFF;
+    --surface-2:#FBFAF6;
+    --accent:#0E6E64;
+    --accent-strong:#0A5850;
+    --accent-soft:#DEEEEA;
+    --amber:#B8763A;
+    --amber-soft:#F3E4D2;
+    --danger:#B3432E;
+    --danger-soft:#F5E1DC;
+    --line:#DAD5C9;
+    --shadow:rgba(22,33,31,0.10);
+
+    /* code panels stay a fixed dark micro-theme in both page themes, defined unconditionally */
+    --code-bg:#12211D;
+    --code-bg-2:#0E1B18;
+    --code-fg:#DCEEE8;
+    --code-key:#7FD9C4;
+    --code-str:#E8C98A;
+    --code-muted:#6C8B84;
+    --code-line:#22403A;
+
+    --font-display:'Cairo','Segoe UI',Tahoma,sans-serif;
+    --font-body:'IBM Plex Sans Arabic','Segoe UI',Tahoma,sans-serif;
+    --font-mono:'IBM Plex Mono','Consolas','SFMono-Regular',monospace;
+
+    --fs-h1:clamp(1.9rem,1.5rem + 1.8vw,2.7rem);
+    --fs-h2:clamp(1.35rem,1.15rem + 0.9vw,1.85rem);
+    --fs-h3:1.18rem;
+    --fs-body:1rem;
+    --fs-small:0.86rem;
+    --fs-mono:0.86rem;
+  }
+
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --ink:#E8EEEC;
+      --ink-soft:#9FB3AE;
+      --paper:#0F1614;
+      --surface:#141C1A;
+      --surface-2:#182120;
+      --accent:#4FC3B4;
+      --accent-strong:#6FD6C8;
+      --accent-soft:#1B302C;
+      --amber:#D9A15C;
+      --amber-soft:#3A2C1C;
+      --danger:#E27A63;
+      --danger-soft:#3A211C;
+      --line:#243330;
+      --shadow:rgba(0,0,0,0.4);
+    }
+  }
+  :root[data-theme="dark"]{
+    --ink:#E8EEEC;
+    --ink-soft:#9FB3AE;
+    --paper:#0F1614;
+    --surface:#141C1A;
+    --surface-2:#182120;
+    --accent:#4FC3B4;
+    --accent-strong:#6FD6C8;
+    --accent-soft:#1B302C;
+    --amber:#D9A15C;
+    --amber-soft:#3A2C1C;
+    --danger:#E27A63;
+    --danger-soft:#3A211C;
+    --line:#243330;
+    --shadow:rgba(0,0,0,0.4);
+  }
+
+  *{ box-sizing:border-box; }
+  html,body{ background:var(--paper); }
+  body{ margin:0; }
+
+  #page{
+    direction:rtl;
+    font-family:var(--font-body);
+    font-size:var(--fs-body);
+    color:var(--ink);
+    background:var(--paper);
+    line-height:1.85;
+    -webkit-font-smoothing:antialiased;
+  }
+
+  h1,h2,h3{
+    font-family:var(--font-display);
+    font-weight:800;
+    line-height:1.25;
+    text-wrap:balance;
+    margin:0 0 0.6em;
+    color:var(--ink);
+  }
+  h1{ font-size:var(--fs-h1); font-weight:900; }
+  h2{ font-size:var(--fs-h2); }
+  h3{ font-size:var(--fs-h3); font-weight:700; }
+  p{ margin:0 0 1em; color:var(--ink); }
+  a{ color:var(--accent-strong); }
+  a:focus-visible, button:focus-visible, .navlink:focus-visible{
+    outline:2px solid var(--accent);
+    outline-offset:3px;
+    border-radius:4px;
+  }
+
+  /* ltr embed for technical content inside an rtl document */
+  .ltr{ direction:ltr; unicode-bidi:isolate; text-align:left; }
+
+  code, pre, .mono{ font-family:var(--font-mono); }
+
+  .wrap{ max-width:1180px; margin:0 auto; padding:0 clamp(1rem,4vw,3rem); }
+
+  /* ---------- header ---------- */
+  header.hero{
+    border-bottom:1px solid var(--line);
+    padding:clamp(2.2rem,5vw,3.6rem) 0 clamp(1.8rem,4vw,2.6rem);
+    background:
+      radial-gradient(1100px 420px at 85% -10%, var(--accent-soft) 0%, transparent 60%),
+      var(--paper);
+  }
+  .eyebrow{
+    display:inline-flex; align-items:center; gap:0.5em;
+    font-size:var(--fs-small); font-weight:600; color:var(--accent-strong);
+    letter-spacing:0.04em; margin-bottom:0.9em;
+  }
+  .eyebrow::before{ content:""; width:0.5em; height:0.5em; border-radius:50%; background:var(--accent); }
+  header.hero p.lead{ max-width:62ch; font-size:1.06rem; color:var(--ink-soft); }
+
+  .pills{ display:flex; flex-wrap:wrap; gap:0.5rem; margin:1.4rem 0 1.8rem; }
+  .pill{
+    font-family:var(--font-mono); font-size:0.78rem; direction:ltr;
+    padding:0.32em 0.75em; border-radius:999px;
+    border:1px solid var(--line); background:var(--surface); color:var(--ink-soft);
+  }
+
+  .stats{
+    display:grid; grid-template-columns:repeat(4,1fr); gap:1px;
+    background:var(--line); border:1px solid var(--line); border-radius:14px;
+    overflow:hidden;
+  }
+  .stat{ background:var(--surface); padding:1rem 1.1rem; }
+  .stat b{
+    display:block; font-family:var(--font-display); font-weight:900;
+    font-size:1.7rem; color:var(--accent-strong); font-variant-numeric:tabular-nums;
+  }
+  .stat span{ font-size:var(--fs-small); color:var(--ink-soft); }
+  @media (max-width:720px){ .stats{ grid-template-columns:repeat(2,1fr); } }
+
+  /* ---------- layout: nav + content ---------- */
+  .layout{ display:flex; align-items:flex-start; gap:clamp(1.5rem,4vw,3.2rem); padding:clamp(2rem,5vw,3.2rem) 0 4rem; }
+  nav.toc{
+    position:sticky; top:1.4rem; flex:0 0 210px;
+    display:flex; flex-direction:column; gap:0.15rem;
+    border-inline-start:1px solid var(--line); padding-inline-start:1.1rem;
+  }
+  nav.toc .group-label{
+    font-size:0.72rem; font-weight:700; color:var(--ink-soft);
+    letter-spacing:0.06em; margin:1rem 0 0.35rem;
+  }
+  nav.toc .group-label:first-child{ margin-top:0; }
+  .navlink{
+    display:block; padding:0.3rem 0.5rem; margin:0 -0.5rem;
+    border-radius:8px; text-decoration:none; font-size:0.87rem;
+    color:var(--ink-soft); transition:background .15s, color .15s;
+  }
+  .navlink:hover{ background:var(--accent-soft); color:var(--accent-strong); }
+  .navlink.active{ background:var(--accent-soft); color:var(--accent-strong); font-weight:600; }
+  .navlink .m{ font-family:var(--font-mono); direction:ltr; unicode-bidi:isolate; font-size:0.72rem; opacity:0.75; }
+  @media (max-width:900px){
+    .layout{ flex-direction:column; }
+    nav.toc{
+      position:static; width:100%; flex-direction:row; flex-wrap:wrap;
+      border-inline-start:none; padding-inline-start:0;
+      border-bottom:1px solid var(--line); padding-bottom:1rem; gap:0.4rem;
+    }
+    nav.toc .group-label{ display:none; }
+    .navlink{ border:1px solid var(--line); margin:0; font-size:0.8rem; }
+  }
+
+  main{ min-width:0; flex:1 1 auto; max-width:820px; }
+  section{ margin-bottom:clamp(2.4rem,5vw,3.4rem); scroll-margin-top:1.4rem; }
+  section > p:last-child{ margin-bottom:0; }
+
+  .note{
+    border-inline-start:3px solid var(--amber);
+    background:var(--amber-soft);
+    padding:0.75rem 1rem; border-radius:8px;
+    font-size:0.92rem; color:var(--ink);
+    margin:1rem 0;
+  }
+  .note b{ color:var(--ink); }
+
+  ul.tight{ padding-inline-start:1.3rem; margin:0 0 1em; }
+  ul.tight li{ margin-bottom:0.5em; }
+  ul.tight li::marker{ color:var(--accent); }
+
+  /* ---------- architecture rings ---------- */
+  .arch{
+    display:flex; align-items:center; gap:clamp(1.5rem,4vw,3rem);
+    flex-wrap:wrap; justify-content:center;
+    background:var(--surface); border:1px solid var(--line); border-radius:16px;
+    padding:clamp(1.6rem,4vw,2.4rem); margin:1.4rem 0;
+  }
+  .rings{ position:relative; width:264px; height:264px; flex:0 0 auto; }
+  .ring{
+    position:absolute; inset:0; border-radius:50%;
+    display:flex; justify-content:center;
+    border:1px dashed var(--line);
+  }
+  .ring .lbl{
+    position:absolute; top:8px; left:50%; transform:translateX(-50%);
+    font-size:0.68rem; font-weight:700; letter-spacing:0.03em;
+    color:var(--ink-soft); background:var(--surface); padding:0 0.35em;
+    direction:ltr; white-space:nowrap;
+  }
+  .ring.r-api{ inset:0; }
+  .ring.r-infra{ inset:15%; border-style:solid; }
+  .ring.r-app{ inset:32%; border-style:solid; background:var(--surface-2); }
+  .ring.r-domain{
+    inset:50%; border-style:solid; border-color:var(--accent);
+    background:var(--accent-soft);
+    display:flex; align-items:center; justify-content:center;
+  }
+  .ring.r-domain .lbl{ position:static; transform:none; background:transparent; color:var(--accent-strong); font-size:0.72rem; }
+  .arch-note{ max-width:360px; }
+  .arch-note .dep-arrow{
+    display:flex; align-items:center; gap:0.6rem; margin-bottom:0.9rem;
+    font-size:0.82rem; color:var(--ink-soft); font-weight:600;
+  }
+  .arch-note .dep-arrow svg{ flex:0 0 auto; }
+  .arch-note p{ font-size:0.92rem; margin-bottom:0.7rem; }
+
+  /* ---------- setup steps ---------- */
+  ol.steps{ list-style:none; margin:0; padding:0; counter-reset:step; display:flex; flex-direction:column; gap:0.9rem; }
+  ol.steps li{
+    counter-increment:step;
+    display:grid; grid-template-columns:2rem 1fr; gap:0.8rem;
+    align-items:start;
+  }
+  ol.steps li::before{
+    content:counter(step);
+    width:2rem; height:2rem; border-radius:50%;
+    background:var(--accent-soft); color:var(--accent-strong);
+    font-family:var(--font-display); font-weight:800; font-size:0.9rem;
+    display:flex; align-items:center; justify-content:center;
+    font-variant-numeric:tabular-nums;
+  }
+  ol.steps pre{ margin-top:0.4rem; }
+
+  /* ---------- code panels ---------- */
+  pre.code{
+    background:var(--code-bg); color:var(--code-fg);
+    border:1px solid var(--code-line); border-radius:10px;
+    padding:0.85rem 1rem; margin:0; overflow-x:auto;
+    font-size:var(--fs-mono); line-height:1.65;
+  }
+  pre.code .k{ color:var(--code-key); }
+  pre.code .s{ color:var(--code-str); }
+  pre.code .c{ color:var(--code-muted); }
+  .code-label{
+    direction:ltr; text-align:left; font-family:var(--font-mono);
+    font-size:0.72rem; font-weight:600; letter-spacing:0.04em;
+    color:var(--ink-soft); margin:1rem 0 0.35rem; text-transform:uppercase;
+  }
+  .code-label:first-child{ margin-top:0; }
+
+  /* ---------- endpoint cards ---------- */
+  .endpoint{
+    border:1px solid var(--line); border-radius:16px; background:var(--surface);
+    padding:clamp(1.3rem,3vw,1.8rem); margin-bottom:1.3rem;
+    box-shadow:0 1px 2px var(--shadow);
+    scroll-margin-top:1.4rem;
+  }
+  .endpoint-head{ display:flex; align-items:center; gap:0.8rem; flex-wrap:wrap; margin-bottom:0.7rem; }
+  .step-no{
+    font-family:var(--font-display); font-weight:900; font-size:0.82rem;
+    color:var(--ink-soft); font-variant-numeric:tabular-nums;
+    border:1px solid var(--line); border-radius:6px; padding:0.1em 0.5em;
+  }
+  .sig{
+    display:inline-flex; align-items:center; gap:0.55rem;
+    font-family:var(--font-mono); font-size:0.98rem; font-weight:500;
+  }
+  .method{
+    font-weight:700; font-size:0.74rem; letter-spacing:0.03em;
+    padding:0.22em 0.6em; border-radius:6px;
+  }
+  .method.get{ background:var(--accent-soft); color:var(--accent-strong); }
+  .method.post{ background:var(--amber-soft); color:var(--amber); }
+  .path{ color:var(--ink); }
+  .status-tags{ display:flex; gap:0.4rem; margin-inline-start:auto; }
+  .status-tag{
+    font-family:var(--font-mono); font-size:0.7rem; font-weight:600;
+    padding:0.15em 0.5em; border-radius:5px; direction:ltr;
+  }
+  .status-tag.ok{ background:var(--accent-soft); color:var(--accent-strong); }
+  .status-tag.err{ background:var(--danger-soft); color:var(--danger); }
+  .endpoint p.desc{ font-size:0.96rem; margin-bottom:0.2rem; }
+
+  footer{
+    border-top:1px solid var(--line); padding:2.2rem 0 3rem;
+    color:var(--ink-soft); font-size:0.88rem;
+  }
+  footer a{ color:var(--accent-strong); }
+
+  /* ---------- talk-to-the-model: methods + transcript ---------- */
+  .methods{ display:flex; flex-direction:column; gap:1.4rem; margin:1.2rem 0; }
+  .method-block{
+    border:1px solid var(--line); border-radius:14px; background:var(--surface);
+    padding:clamp(1.1rem,3vw,1.5rem);
+  }
+  .method-head{ display:flex; align-items:center; gap:0.6rem; margin-bottom:0.5rem; }
+  .method-num{
+    font-family:var(--font-display); font-weight:900; font-size:0.78rem;
+    color:var(--accent-strong); background:var(--accent-soft);
+    border-radius:6px; padding:0.1em 0.55em; font-variant-numeric:tabular-nums;
+  }
+  .method-block h3{ margin:0; }
+  .method-block p.desc{ font-size:0.94rem; }
+
+  .chat-log{
+    display:flex; flex-direction:column; gap:0.85rem;
+    background:var(--surface-2); border:1px solid var(--line); border-radius:12px;
+    padding:1.1rem 1.2rem; margin:0.9rem 0;
+  }
+  .chat-turn{ display:grid; grid-template-columns:5.5rem 1fr; gap:0.7rem; align-items:start; }
+  .chat-turn .who{ font-size:0.72rem; font-weight:700; letter-spacing:0.02em; padding-top:0.2rem; }
+  .chat-turn.doctor .who{ color:var(--amber); }
+  .chat-turn.patient .who{ color:var(--accent-strong); }
+  .chat-turn .what{ font-size:0.93rem; }
+  .chat-turn .what.messy{ color:var(--ink-soft); }
+  @media (max-width:520px){
+    .chat-turn{ grid-template-columns:1fr; gap:0.15rem; }
+  }
+
+  @media (prefers-reduced-motion: reduce){
+    *{ animation:none !important; transition:none !important; }
+  }
+</style>
+
+<div id="page" dir="rtl" lang="ar">
+
+  <header class="hero">
+    <div class="wrap">
+      <span class="eyebrow">توثيق تقني · Backend</span>
+      <h1>محاكي المريض للتدريب الطبي</h1>
+      <p class="lead">
+        هذا المستند يشرح كيف بُنيت الواجهة الخلفية (backend) لمحاكي المريض — بنيتها المعمارية،
+        وقرارات التصميم الأساسية — ثم يقدّم دليلاً عمليًا لاختبار كل نقطة نهاية (endpoint) في الـ API
+        خطوة بخطوة، بأمثلة <span class="mono ltr" style="font-size:0.95em">curl</span> جاهزة للنسخ،
+        وصولًا إلى تجربة الحديث المباشر مع نموذج <span class="mono ltr" style="font-size:0.95em">Qwen</span>
+        المحلي الذي يقف خلف ردود "المريض".
+      </p>
+
+      <div class="pills">
+        <span class="pill">FastAPI</span>
+        <span class="pill">SQLModel</span>
+        <span class="pill">Alembic</span>
+        <span class="pill">SQLite · aiosqlite</span>
+        <span class="pill">Qwen2.5-0.5B · transformers</span>
+        <span class="pill">pytest + httpx</span>
+      </div>
+
+      <div class="stats">
+        <div class="stat"><b>4</b><span>طبقات معمارية</span></div>
+        <div class="stat"><b>11</b><span>نقاط نهاية API</span></div>
+        <div class="stat"><b>38</b><span>اختبار ناجح</span></div>
+        <div class="stat"><b>0</b><span>تسريب لمفاتيح الإجابات</span></div>
+      </div>
+    </div>
+  </header>
+
+  <div class="wrap layout">
+    <nav class="toc" aria-label="فهرس الصفحة">
+      <div class="group-label">الشرح</div>
+      <a class="navlink" href="#overview">لمحة عامة</a>
+      <a class="navlink" href="#architecture">البنية المعمارية</a>
+      <a class="navlink" href="#decisions">قرارات تصميم مهمة</a>
+      <a class="navlink" href="#setup">التشغيل السريع</a>
+
+      <div class="group-label">دليل الاختبار</div>
+      <a class="navlink" href="#ep-1"><span class="m">GET</span> /health</a>
+      <a class="navlink" href="#ep-2"><span class="m">GET</span> /scenarios</a>
+      <a class="navlink" href="#ep-3"><span class="m">GET</span> /scenarios/{id}/questions</a>
+      <a class="navlink" href="#ep-4"><span class="m">GET</span> /test-categories</a>
+      <a class="navlink" href="#ep-5"><span class="m">GET</span> /test-categories/{id}/tests</a>
+      <a class="navlink" href="#ep-6"><span class="m">POST</span> /sessions</a>
+      <a class="navlink" href="#ep-7"><span class="m">POST</span> /sessions/{id}/messages</a>
+      <a class="navlink" href="#ep-8"><span class="m">POST</span> /sessions/{id}/tests</a>
+      <a class="navlink" href="#ep-9"><span class="m">POST</span> /sessions/{id}/answers</a>
+      <a class="navlink" href="#ep-10"><span class="m">GET</span> /sessions/{id}</a>
+      <a class="navlink" href="#ep-11"><span class="m">POST</span> /sessions/{id}/evaluate</a>
+
+      <div class="group-label">النموذج المحلي</div>
+      <a class="navlink" href="#qwen">التحدث مع Qwen</a>
+    </nav>
+
+    <main>
+
+      <section id="overview">
+        <h2>لمحة عامة</h2>
+        <p>
+          المشروع عبارة عن backend لمحاكاة مريض افتراضي يتدرّب عليه الأطباء: يقرأ الطبيب حالة سريرية،
+          يحاور "المريض" عبر رسائل، يطلب فحوصات (علامات حيوية، تحاليل، أشعة...)، ثم يجيب عن أسئلة تشخيصية
+          تُقيَّم لاحقًا. سابقًا كان هذا سيُبنى على ملفات JSON متفرقة وقواميس في الذاكرة — الآن كل شيء
+          مخزَّن في قاعدة بيانات SQLite حقيقية، عبر طبقة ORM (SQLModel) ومخطط تُديره هجرات Alembic فعلية،
+          لا <code class="ltr">create_all()</code>.
+        </p>
+        <p>الكيانات الأساسية في النموذج:</p>
+        <ul class="tight">
+          <li><b>Scenario</b> — الحالة السريرية (نص الحالة مخفي، لا يُعاد أبدًا عبر API)</li>
+          <li><b>TestCategory / Test</b> — تصنيفات وفحوصات، لكل فحص نتيجة تُكشف فقط عند الطلب</li>
+          <li><b>Question / Choice</b> — أسئلة تشخيصية وخياراتها، مع مفتاح إجابة صحيحة لا يُكشف أبدًا مسبقًا</li>
+          <li><b>Session / Message</b> — جلسة تدريب وسجل المحادثة الخاص بها</li>
+          <li><b>OrderedTest / Answer</b> — سجل الفحوصات المطلوبة، وإجابات الطبيب (بترقية/upsert عند إعادة الإجابة)</li>
+        </ul>
+      </section>
+
+      <section id="architecture">
+        <h2>البنية المعمارية</h2>
+        <p>
+          الكود مقسَّم إلى أربع طبقات نظيفة (Clean Architecture)، بحيث تعرف كل طبقة فقط ما يليها إلى
+          الداخل، ولا شيء يعرف عن الطبقات الخارجية:
+        </p>
+
+        <div class="arch">
+          <div class="rings">
+            <div class="ring r-api"><span class="lbl">api</span></div>
+            <div class="ring r-infra"><span class="lbl">infrastructure</span></div>
+            <div class="ring r-app"><span class="lbl">application</span></div>
+            <div class="ring r-domain"><span class="lbl">domain</span></div>
+          </div>
+          <div class="arch-note">
+            <div class="dep-arrow">
+              <svg width="26" height="14" viewBox="0 0 26 14" fill="none" aria-hidden="true">
+                <line x1="24" y1="7" x2="3" y2="7" stroke="currentColor" stroke-width="2"/>
+                <path d="M9 1L3 7L9 13" stroke="currentColor" stroke-width="2" fill="none"/>
+              </svg>
+              اتجاه الاعتماد يتجه دائمًا إلى الداخل
+            </div>
+            <p>
+              <b>domain</b> — كيانات Python صرفة (<code class="ltr">dataclasses</code>) وواجهات
+              مستودعات مجرّدة، بلا أي استيراد لـ SQLModel أو FastAPI.
+            </p>
+            <p>
+              <b>application</b> — حالة استخدام واحدة لكل ملف (بدء جلسة، طلب فحص، إجابة سؤال...)،
+              تعتمد فقط على واجهات الـ domain عبر حقن المُنشئ (constructor injection).
+            </p>
+            <p>
+              <b>infrastructure</b> — نماذج SQLModel الفعلية، محرك القاعدة غير المتزامن، وتنفيذ
+              المستودعات الذي يترجم بين صفوف القاعدة وكيانات الـ domain.
+            </p>
+            <p>
+              <b>api</b> — راوترات FastAPI رقيقة: تستقبل الطلب، تستدعي حالة الاستخدام، وتُحوّل
+              الناتج إلى مخطط استجابة — بلا أي منطق عمل.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <section id="decisions">
+        <h2>قرارات تصميم مهمة</h2>
+        <ul class="tight">
+          <li>
+            <b>لا تسريب لنتائج الفحوصات:</b> حقل <code class="ltr">result</code> لا يظهر في قائمة
+            الفحوصات (<code class="ltr">GET /test-categories/{id}/tests</code>)، بل فقط بعد طلب
+            الفحص فعليًا ضمن جلسة.
+          </li>
+          <li>
+            <b>لا تسريب لمفتاح الإجابة:</b> <code class="ltr">correct_choice_id</code> لا يُعاد أبدًا
+            عبر <code class="ltr">GET /scenarios/{id}/questions</code>، ولا يوجد endpoint مخصص لكشفه.
+          </li>
+          <li>
+            <b>لا تسريب لصحة الإجابة عند إرسالها:</b> الرد على
+            <code class="ltr">POST /sessions/{id}/answers</code> لا يحتوي
+            <code class="ltr">is_correct</code> — تظهر فقط لاحقًا عبر مراجعة الجلسة الكاملة.
+          </li>
+          <li>
+            <b>معاملة واحدة لكل عملية كتابة:</b> عبر نمط <span class="ltr">Unit&nbsp;of&nbsp;Work</span>،
+            كل حالة استخدام معدِّلة (بدء جلسة، طلب فحص، إجابة) تُنفَّذ بالكامل أو تُلغى بالكامل — لا كتابة جزئية عند حدوث خطأ.
+          </li>
+          <li>
+            <b>ترقية الإجابات (upsert):</b> إعادة الإجابة على نفس السؤال ضمن نفس الجلسة تستبدل
+            الإجابة السابقة، لا تُنشئ سجلًا مكرَّرًا.
+          </li>
+          <li>
+            <b>الهجرات هي مصدر الحقيقة:</b> لا استدعاء لـ
+            <code class="ltr">create_all()</code> في أي مكان — المخطط بالكامل يُبنى عبر Alembic،
+            بما يشمل قاعدة SQLite داخل الذاكرة المستخدمة في الاختبارات.
+          </li>
+          <li>
+            <b>رد المريض معزول خلف واجهة (port):</b> <code class="ltr">PatientReplyGenerator</code>
+            هي الواجهة الوحيدة التي تعرفها طبقة الـ application. حاليًا يوجد تنفيذان فعليان لها في
+            <code class="ltr">app/infrastructure/</code>: نموذج Qwen المحلي (الافتراضي)، ونموذج بديل
+            ثابت (stub) للاختبارات السريعة. التبديل بينهما سطر إعداد واحد فقط —
+            <a href="#qwen">التفاصيل أدناه</a>.
+          </li>
+          <li>
+            <b>التقييم منفصل بنفس المبدأ:</b> <code class="ltr">EvaluationGenerator</code> واجهة
+            مستقلة أخرى (نموذج بديل ثابت حاليًا في
+            <code class="ltr">app/infrastructure/stub_evaluator.py</code>)، تُستهلَك بواسطة
+            <code class="ltr">EvaluateSessionUseCase</code> ولا تُخزَّن نتيجتها في قاعدة البيانات —
+            تُولَّد عند كل استدعاء لـ
+            <code class="ltr">POST /sessions/{id}/evaluate</code>.
+          </li>
+        </ul>
+      </section>
+
+      <section id="setup">
+        <h2>التشغيل السريع</h2>
+        <ol class="steps">
+          <li>
+            <div>
+              تفعيل البيئة الافتراضية وتثبيت الحزم
+              <pre class="code ltr"><span class="c"># PowerShell, من داخل backend/</span>
+.\venv\Scripts\Activate.ps1
+pip install -r requirements.txt</pre>
+            </div>
+          </li>
+          <li>
+            <div>
+              تطبيق الهجرات لإنشاء المخطط (لا create_all)
+              <pre class="code ltr">alembic upgrade head</pre>
+            </div>
+          </li>
+          <li>
+            <div>
+              (اختياري) استيراد بيانات JSON قديمة
+              <pre class="code ltr">python -m app.infrastructure.seed C:\path\to\legacy-json-dir</pre>
+            </div>
+          </li>
+          <li>
+            <div>
+              تشغيل الخادم
+              <pre class="code ltr">uvicorn app.main:app --reload</pre>
+            </div>
+          </li>
+          <li>
+            <div>
+              تشغيل الاختبارات (قاعدة بيانات مؤقتة داخل الذاكرة لكل اختبار)
+              <pre class="code ltr">pytest</pre>
+            </div>
+          </li>
+        </ol>
+      </section>
+
+      <section id="api-guide">
+        <h2>دليل اختبار كل نقطة نهاية</h2>
+        <p>
+          الترتيب أدناه يتبع التدفق الفعلي الذي يمرّ به طبيب متدرّب أثناء الاختبار: من استعراض
+          السيناريوهات، إلى بدء جلسة، إلى المحادثة وطلب الفحوصات، وصولًا إلى مراجعة النتيجة وتقييم
+          الأداء (OSCE). الأمثلة تفترض أن الخادم يعمل على
+          <code class="ltr">http://127.0.0.1:8000</code>.
+        </p>
+
+        <!-- 1 -->
+        <article class="endpoint" id="ep-1">
+          <div class="endpoint-head">
+            <span class="step-no">01</span>
+            <span class="sig ltr"><span class="method get">GET</span><span class="path">/health</span></span>
+            <span class="status-tags"><span class="status-tag ok">200</span><span class="status-tag err">503</span></span>
+          </div>
+          <p class="desc">فحص جاهزية حقيقي — يتحقق من الاتصال الفعلي بقاعدة البيانات (<code class="ltr">SELECT 1</code>)، وليس فقط أن العملية تعمل.</p>
+          <div class="code-label">Response — 200</div>
+          <pre class="code ltr">{<span class="k">"status"</span>: <span class="s">"ok"</span>, <span class="k">"database"</span>: <span class="s">"ok"</span>}</pre>
+          <div class="code-label">curl</div>
+          <pre class="code ltr">curl http://127.0.0.1:8000/health</pre>
+        </article>
+
+        <!-- 2 -->
+        <article class="endpoint" id="ep-2">
+          <div class="endpoint-head">
+            <span class="step-no">02</span>
+            <span class="sig ltr"><span class="method get">GET</span><span class="path">/scenarios</span></span>
+            <span class="status-tags"><span class="status-tag ok">200</span></span>
+          </div>
+          <p class="desc">كل السيناريوهات المتاحة — الاسم فقط.</p>
+          <div class="note"><b>ملاحظة:</b> حقلا <code class="ltr">case_text</code> و<code class="ltr">gold_standard</code> لا يُعادان في أي استجابة API — بيانات داخلية فقط.</div>
+          <div class="code-label">Response — 200</div>
+          <pre class="code ltr">[
+  {<span class="k">"id"</span>: 1, <span class="k">"name"</span>: <span class="s">"التهاب الزائدة الدودية الحاد"</span>}
+]</pre>
+          <div class="code-label">curl</div>
+          <pre class="code ltr">curl http://127.0.0.1:8000/scenarios</pre>
+        </article>
+
+        <!-- 3 -->
+        <article class="endpoint" id="ep-3">
+          <div class="endpoint-head">
+            <span class="step-no">03</span>
+            <span class="sig ltr"><span class="method get">GET</span><span class="path">/scenarios/{scenario_id}/questions</span></span>
+            <span class="status-tags"><span class="status-tag ok">200</span><span class="status-tag err">404</span></span>
+          </div>
+          <p class="desc">أسئلة سيناريو معيّن مع خياراتها.</p>
+          <div class="note"><b>ملاحظة:</b> لا يوجد حقل <code class="ltr">correct_choice_id</code> في الاستجابة — مفتاح الإجابة لا يُكشف عبر هذه النقطة أبدًا.</div>
+          <div class="code-label">Response — 200 (scenario_id=1)</div>
+          <pre class="code ltr">[
+  {
+    <span class="k">"id"</span>: 1,
+    <span class="k">"text"</span>: <span class="s">"ما هو التشخيص الأرجح؟"</span>,
+    <span class="k">"choices"</span>: [
+      {<span class="k">"id"</span>: 1, <span class="k">"text"</span>: <span class="s">"التهاب الزائدة الدودية"</span>},
+      {<span class="k">"id"</span>: 2, <span class="k">"text"</span>: <span class="s">"التهاب المعدة والأمعاء"</span>}
+    ]
+  }
+]</pre>
+          <div class="code-label">curl</div>
+          <pre class="code ltr">curl http://127.0.0.1:8000/scenarios/1/questions</pre>
+        </article>
+
+        <!-- 4 -->
+        <article class="endpoint" id="ep-4">
+          <div class="endpoint-head">
+            <span class="step-no">04</span>
+            <span class="sig ltr"><span class="method get">GET</span><span class="path">/test-categories</span></span>
+            <span class="status-tags"><span class="status-tag ok">200</span></span>
+          </div>
+          <p class="desc">تصنيفات الفحوصات المتاحة (مثل: علامات حيوية، مخبري).</p>
+          <div class="code-label">Response — 200</div>
+          <pre class="code ltr">[
+  {<span class="k">"id"</span>: 1, <span class="k">"name"</span>: <span class="s">"Vital"</span>},
+  {<span class="k">"id"</span>: 2, <span class="k">"name"</span>: <span class="s">"Lab"</span>}
+]</pre>
+          <div class="code-label">curl</div>
+          <pre class="code ltr">curl http://127.0.0.1:8000/test-categories</pre>
+        </article>
+
+        <!-- 5 -->
+        <article class="endpoint" id="ep-5">
+          <div class="endpoint-head">
+            <span class="step-no">05</span>
+            <span class="sig ltr"><span class="method get">GET</span><span class="path">/test-categories/{category_id}/tests</span></span>
+            <span class="status-tags"><span class="status-tag ok">200</span><span class="status-tag err">404</span></span>
+          </div>
+          <p class="desc">قائمة الفحوصات ضمن تصنيف — قائمة "الطلب" فقط.</p>
+          <div class="note"><b>ملاحظة:</b> لا يوجد حقل <code class="ltr">result</code> هنا. النتيجة الفعلية تبقى مخفية حتى يُطلَب الفحص داخل جلسة (انظر #08).</div>
+          <div class="code-label">Response — 200 (category_id=2)</div>
+          <pre class="code ltr">[
+  {<span class="k">"id"</span>: 2, <span class="k">"category_id"</span>: 2, <span class="k">"name"</span>: <span class="s">"CBC"</span>}
+]</pre>
+          <div class="code-label">curl</div>
+          <pre class="code ltr">curl http://127.0.0.1:8000/test-categories/2/tests</pre>
+        </article>
+
+        <!-- 6 -->
+        <article class="endpoint" id="ep-6">
+          <div class="endpoint-head">
+            <span class="step-no">06</span>
+            <span class="sig ltr"><span class="method post">POST</span><span class="path">/sessions</span></span>
+            <span class="status-tags"><span class="status-tag ok">201</span><span class="status-tag err">404</span></span>
+          </div>
+          <p class="desc">يبدأ جلسة تدريب جديدة على سيناريو معيّن، ويعيد معرّف جلسة (UUID) يُستخدم في كل الطلبات التالية.</p>
+          <div class="code-label">Request body</div>
+          <pre class="code ltr">{<span class="k">"scenario_id"</span>: 1}</pre>
+          <div class="code-label">Response — 201</div>
+          <pre class="code ltr">{<span class="k">"session_id"</span>: <span class="s">"f3e8a2e3-45c8-44af-8ed7-73112e53f374"</span>}</pre>
+          <div class="code-label">curl</div>
+          <pre class="code ltr">curl -X POST http://127.0.0.1:8000/sessions \
+  -H "Content-Type: application/json" \
+  -d '{"scenario_id": 1}'</pre>
+        </article>
+
+        <!-- 7 -->
+        <article class="endpoint" id="ep-7">
+          <div class="endpoint-head">
+            <span class="step-no">07</span>
+            <span class="sig ltr"><span class="method post">POST</span><span class="path">/sessions/{session_id}/messages</span></span>
+            <span class="status-tags"><span class="status-tag ok">201</span><span class="status-tag err">404</span></span>
+          </div>
+          <p class="desc">يرسل رسالة من الطبيب المتدرّب ويخزّنها، ثم يعيد ردّ "المريض" — بلغة النموذج (Qwen) الفعلي، لا نص ثابت.</p>
+          <div class="note">
+            <b>ملاحظة:</b> الرد مولَّد فعليًا بنموذج <code class="ltr">Qwen2.5-0.5B-Instruct</code> محلي
+            (عبر <code class="ltr">app/infrastructure/qwen_patient_generator.py</code>)، لا نص ثابت
+            ولا استدعاء خارجي — يعمل على المعالج (CPU) مباشرة. أول طلب في كل تشغيل للخادم أبطأ
+            (~15 ثانية، تحميل النموذج لمرة واحدة)، وما بعده أسرع بكثير (~5 ثوانٍ). دليل تجربة الحديث معه
+            مباشرة في <a href="#qwen">القسم التالي</a>.
+          </div>
+          <div class="code-label">Request body</div>
+          <pre class="code ltr">{<span class="k">"content"</span>: <span class="s">"هل تعاني من ألم في المعدة؟"</span>}</pre>
+          <div class="code-label">Response — 201 (رد فعلي من النموذج، وليس مثالاً وهميًا)</div>
+          <pre class="code ltr">{
+  <span class="k">"id"</span>: 2,
+  <span class="k">"role"</span>: <span class="s">"assistant"</span>,
+  <span class="k">"content"</span>: <span class="s">"نعم، أعاني من آلام في المقدسة. أشعر أنني أحتاج إلى المزيد من الرعاية الطبية."</span>,
+  <span class="k">"created_at"</span>: <span class="s">"2026-08-24T09:19:09.708222"</span>
+}</pre>
+          <div class="code-label">curl (استبدل SESSION_ID)</div>
+          <pre class="code ltr">curl -X POST http://127.0.0.1:8000/sessions/SESSION_ID/messages \
+  -H "Content-Type: application/json" \
+  -d '{"content": "هل تعاني من ألم في المعدة؟"}'</pre>
+        </article>
+
+        <!-- 8 -->
+        <article class="endpoint" id="ep-8">
+          <div class="endpoint-head">
+            <span class="step-no">08</span>
+            <span class="sig ltr"><span class="method post">POST</span><span class="path">/sessions/{session_id}/tests</span></span>
+            <span class="status-tags"><span class="status-tag ok">201</span><span class="status-tag err">404</span></span>
+          </div>
+          <p class="desc">يسجّل طلب فحص ضمن الجلسة (<code class="ltr">OrderedTest</code>) ويكشف نتيجته.</p>
+          <div class="note"><b>ملاحظة:</b> هذه هي النقطة الوحيدة في كامل الـ API التي يظهر منها حقل <code class="ltr">result</code>.</div>
+          <div class="code-label">Request body</div>
+          <pre class="code ltr">{<span class="k">"test_id"</span>: 2}</pre>
+          <div class="code-label">Response — 201</div>
+          <pre class="code ltr">{
+  <span class="k">"ordered_test_id"</span>: 1,
+  <span class="k">"test_id"</span>: 2,
+  <span class="k">"name"</span>: <span class="s">"CBC"</span>,
+  <span class="k">"result"</span>: <span class="s">"WBC 15,200 (مرتفع مع انحراف يساري)"</span>,
+  <span class="k">"ordered_at"</span>: <span class="s">"2026-08-24T07:13:58.280009"</span>
+}</pre>
+          <div class="code-label">curl (استبدل SESSION_ID)</div>
+          <pre class="code ltr">curl -X POST http://127.0.0.1:8000/sessions/SESSION_ID/tests \
+  -H "Content-Type: application/json" \
+  -d '{"test_id": 2}'</pre>
+        </article>
+
+        <!-- 9 -->
+        <article class="endpoint" id="ep-9">
+          <div class="endpoint-head">
+            <span class="step-no">09</span>
+            <span class="sig ltr"><span class="method post">POST</span><span class="path">/sessions/{session_id}/answers</span></span>
+            <span class="status-tags"><span class="status-tag ok">201</span><span class="status-tag err">400</span><span class="status-tag err">404</span></span>
+          </div>
+          <p class="desc">يسجّل إجابة الطبيب على سؤال. إعادة الإجابة على نفس السؤال ضمن نفس الجلسة تستبدل الإجابة السابقة (upsert)، لا تُنشئ سجلًا جديدًا.</p>
+          <div class="note"><b>ملاحظة:</b> الاستجابة لا تحتوي <code class="ltr">is_correct</code> إطلاقًا — لا تسريب لصحة الإجابة عند إرسالها. اختيار لا ينتمي للسؤال يعيد <span class="ltr" style="display:inline">400</span>.</div>
+          <div class="code-label">Request body</div>
+          <pre class="code ltr">{<span class="k">"question_id"</span>: 1, <span class="k">"choice_id"</span>: 1}</pre>
+          <div class="code-label">Response — 201</div>
+          <pre class="code ltr">{
+  <span class="k">"id"</span>: 1,
+  <span class="k">"question_id"</span>: 1,
+  <span class="k">"choice_id"</span>: 1,
+  <span class="k">"answered_at"</span>: <span class="s">"2026-08-24T07:13:58.317698"</span>
+}</pre>
+          <div class="code-label">curl (استبدل SESSION_ID)</div>
+          <pre class="code ltr">curl -X POST http://127.0.0.1:8000/sessions/SESSION_ID/answers \
+  -H "Content-Type: application/json" \
+  -d '{"question_id": 1, "choice_id": 1}'</pre>
+        </article>
+
+        <!-- 10 -->
+        <article class="endpoint" id="ep-10">
+          <div class="endpoint-head">
+            <span class="step-no">10</span>
+            <span class="sig ltr"><span class="method get">GET</span><span class="path">/sessions/{session_id}</span></span>
+            <span class="status-tags"><span class="status-tag ok">200</span><span class="status-tag err">404</span></span>
+          </div>
+          <p class="desc">المراجعة الكاملة للجلسة: كل الرسائل، كل الفحوصات المطلوبة بنتائجها، وكل الإجابات مع صحتها.</p>
+          <div class="note"><b>ملاحظة:</b> هذه هي النقطة الوحيدة التي يظهر منها حقل <code class="ltr">is_correct</code> — كشف الصحة يتم بعد فوات الأوان دائمًا، لا وقت الإجابة.</div>
+          <div class="code-label">Response — 200</div>
+          <pre class="code ltr">{
+  <span class="k">"session_id"</span>: <span class="s">"f3e8a2e3-45c8-44af-8ed7-73112e53f374"</span>,
+  <span class="k">"scenario_id"</span>: 1,
+  <span class="k">"created_at"</span>: <span class="s">"2026-08-24T07:13:58.122942"</span>,
+  <span class="k">"messages"</span>: [
+    {<span class="k">"id"</span>: 1, <span class="k">"role"</span>: <span class="s">"user"</span>, <span class="k">"content"</span>: <span class="s">"هل تعاني من حمى؟"</span>, <span class="k">"created_at"</span>: <span class="s">"..."</span>},
+    {<span class="k">"id"</span>: 2, <span class="k">"role"</span>: <span class="s">"assistant"</span>, <span class="k">"content"</span>: <span class="s">"..."</span>, <span class="k">"created_at"</span>: <span class="s">"..."</span>}
+  ],
+  <span class="k">"ordered_tests"</span>: [
+    {<span class="k">"id"</span>: 1, <span class="k">"test_id"</span>: 2, <span class="k">"name"</span>: <span class="s">"CBC"</span>, <span class="k">"ordered_at"</span>: <span class="s">"..."</span>}
+  ],
+  <span class="k">"answers"</span>: [
+    {<span class="k">"id"</span>: 1, <span class="k">"question_id"</span>: 1, <span class="k">"choice_id"</span>: 1, <span class="k">"is_correct"</span>: true, <span class="k">"answered_at"</span>: <span class="s">"..."</span>}
+  ]
+}</pre>
+          <div class="code-label">curl (استبدل SESSION_ID)</div>
+          <pre class="code ltr">curl http://127.0.0.1:8000/sessions/SESSION_ID</pre>
+        </article>
+
+        <!-- 11 -->
+        <article class="endpoint" id="ep-11">
+          <div class="endpoint-head">
+            <span class="step-no">11</span>
+            <span class="sig ltr"><span class="method post">POST</span><span class="path">/sessions/{session_id}/evaluate</span></span>
+            <span class="status-tags"><span class="status-tag ok">200</span><span class="status-tag err">400</span><span class="status-tag err">404</span></span>
+          </div>
+          <p class="desc">تقييم بأسلوب OSCE للجلسة حتى هذه اللحظة: علامة عامة، ملخص، وتفصيل لكل معيار تقييم على حدة.</p>
+          <div class="note">
+            <b>ملاحظة:</b> لا جسم طلب (request body) -- كل ما يلزم موجود في الجلسة نفسها. التقييم
+            يُولَّد عند الطلب فقط ولا يُخزَّن (لا جدول <code class="ltr">evaluations</code> في قاعدة
+            البيانات)؛ استدعِ هذه النقطة مرة أخرى للحصول على تقييم محدَّث بعد أي رسالة/فحص/إجابة جديدة.
+            يعيد <span class="ltr" style="display:inline">400</span> إن لم يكن للسيناريو
+            <code class="ltr">gold_standard</code> محدَّد -- التقييم يحتاج معيارًا مرجعيًا ليقارن به.
+          </div>
+          <div class="code-label">Response — 200 (رد فعلي من تشغيل حقيقي للمشروع)</div>
+          <pre class="code ltr">{
+  <span class="k">"score"</span>: 33.3,
+  <span class="k">"summary"</span>: <span class="s">"[stub evaluation] 1/3 criteria met. This is placeholder feedback for development/testing, not real OSCE grading."</span>,
+  <span class="k">"criteria_breakdown"</span>: [
+    {
+      <span class="k">"name"</span>: <span class="s">"History taking"</span>,
+      <span class="k">"passed"</span>: false,
+      <span class="k">"feedback"</span>: <span class="s">"Ask more history questions to build a fuller clinical picture."</span>
+    },
+    {
+      <span class="k">"name"</span>: <span class="s">"Patient communication"</span>,
+      <span class="k">"passed"</span>: false,
+      <span class="k">"feedback"</span>: <span class="s">"No messages were exchanged with the patient during this session."</span>
+    },
+    {
+      <span class="k">"name"</span>: <span class="s">"Diagnostic reasoning"</span>,
+      <span class="k">"passed"</span>: true,
+      <span class="k">"feedback"</span>: <span class="s">"Compare your working diagnosis against the gold standard: التهاب الزائدة الدودية الحاد."</span>
+    }
+  ]
+}</pre>
+          <div class="code-label">curl (استبدل SESSION_ID)</div>
+          <pre class="code ltr">curl -X POST http://127.0.0.1:8000/sessions/SESSION_ID/evaluate</pre>
+        </article>
+
+      </section>
+
+      <section id="qwen">
+        <h2>التحدث مع النموذج مباشرة (Qwen)</h2>
+        <p>
+          منذ التحديث الأخير، رد "المريض" في
+          <code class="ltr">POST /sessions/{id}/messages</code> لم يعد نصًا ثابتًا — هو رد فعلي من
+          نموذج لغوي محلي صغير، <code class="ltr">Qwen/Qwen2.5-0.5B-Instruct</code>، يعمل بالكامل على
+          جهازك عبر <code class="ltr">transformers</code> و<code class="ltr">torch</code> (على
+          المعالج CPU، بلا حاجة لكرت شاشة). أربع طرق لتجربته والتأكد أنه يعمل فعليًا، من الأسهل إلى الأدق:
+        </p>
+
+        <div class="methods">
+
+          <div class="method-block">
+            <div class="method-head">
+              <span class="method-num">1</span>
+              <h3>محادثة كاملة عبر الخادم الفعلي (curl)</h3>
+            </div>
+            <p class="desc">
+              ابدأ جلسة، ثم أرسل عدة رسائل متتالية بنفس معرّف الجلسة — كل رسالة تُخزَّن، والنموذج يرى
+              سجل المحادثة السابق عند توليد كل رد (آخر 8 رسائل كحد أقصى).
+            </p>
+            <pre class="code ltr"># 1) ابدأ جلسة
+curl -X POST http://127.0.0.1:8000/sessions \
+  -H "Content-Type: application/json" \
+  -d '{"scenario_id": 1}'
+# → {"session_id": "SESSION_ID"}
+
+# 2) حادث "المريض" -- استبدل SESSION_ID بالقيمة أعلاه
+curl -X POST http://127.0.0.1:8000/sessions/SESSION_ID/messages \
+  -H "Content-Type: application/json" \
+  -d '{"content": "أين يؤلمك بالضبط؟"}'
+
+curl -X POST http://127.0.0.1:8000/sessions/SESSION_ID/messages \
+  -H "Content-Type: application/json" \
+  -d '{"content": "منذ متى بدأ الألم؟"}'</pre>
+            <p class="desc" style="margin-top:0.9rem">
+              مثال حقيقي من تشغيل فعلي للمشروع (وليس نصًا وهميًا) -- لاحظ الطلب الأول أخذ نحو 15 ثانية
+              (تحميل النموذج لأول مرة في العملية)، والثاني نحو 5 ثوانٍ فقط:
+            </p>
+            <div class="chat-log">
+              <div class="chat-turn doctor">
+                <span class="who">الطبيب</span>
+                <span class="what">هل تعاني من ألم في المعدة؟</span>
+              </div>
+              <div class="chat-turn patient">
+                <span class="who">المريض (Qwen)</span>
+                <span class="what">نعم، أعاني من آلام في المقدسة. أشعر أنني أحتاج إلى المزيد من الرعاية الطبية.</span>
+              </div>
+              <div class="chat-turn doctor">
+                <span class="who">الطبيب</span>
+                <span class="what">متى بدأ الألم؟</span>
+              </div>
+              <div class="chat-turn patient">
+                <span class="who">المريض (Qwen)</span>
+                <span class="what">بدأ الألم عند الساعة الثانية عشرة مساءً.</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="method-block">
+            <div class="method-head">
+              <span class="method-num">2</span>
+              <h3>واجهة Swagger التفاعلية</h3>
+            </div>
+            <p class="desc">
+              شغّل الخادم وافتح <code class="ltr">http://127.0.0.1:8000/docs</code>، وسّع
+              <code class="ltr">POST /sessions/{session_id}/messages</code>، اضغط
+              <span class="ltr" style="display:inline-block">Try it out</span>، واكتب رسالتك -- لا حاجة
+              لـ curl أو أي أداة خارجية، والرد يظهر مباشرة في المتصفح.
+            </p>
+          </div>
+
+          <div class="method-block">
+            <div class="method-head">
+              <span class="method-num">3</span>
+              <h3>سكربت بايثون مباشر (بدون خادم HTTP إطلاقًا)</h3>
+            </div>
+            <p class="desc">
+              الأسرع لتجربة النموذج نفسه أو ضبط الـ prompt -- يستدعي
+              <code class="ltr">QwenPatientReplyGenerator</code> مباشرة دون المرور بطبقة الـ API أو
+              قاعدة البيانات إطلاقًا:
+            </p>
+            <pre class="code ltr">python -c "
+import asyncio
+from app.domain.entities import Scenario
+from app.infrastructure.qwen_patient_generator import QwenPatientReplyGenerator
+
+async def main():
+    gen = QwenPatientReplyGenerator()
+    scenario = Scenario(
+        id=1, name='التهاب الزائدة الدودية الحاد',
+        case_text='مريض عمره 22 عامًا يشكو من ألم حاد في الربع السفلي الأيمن من البطن منذ 12 ساعة.',
+        gold_standard='التهاب الزائدة الدودية الحاد',
+    )
+    reply = await gen.generate_reply(scenario, history=[], user_message='أين يؤلمك بالضبط؟')
+    print(reply)
+
+asyncio.run(main())
+"</pre>
+          </div>
+
+          <div class="method-block">
+            <div class="method-head">
+              <span class="method-num">4</span>
+              <h3>عبر pytest -- الاختبار الآلي</h3>
+            </div>
+            <p class="desc">
+              <code class="ltr">tests/test_qwen_patient_generator.py</code> يشغّل النموذج الحقيقي فعليًا
+              (لا محاكاة/mock): توليد رد عربي غير فارغ، محادثة بسياق سابق، مسار التعطّل الآمن (fallback)
+              عبر تعطيل التحميل عمدًا، وطلب HTTP كامل عبر <code class="ltr">POST /sessions/{id}/messages</code>
+              مع Qwen فعليًا. يتخطّى (skip) نفسه تلقائيًا -- لا يفشل -- إن لم يتوفر <code class="ltr">torch</code>/<code class="ltr">transformers</code> أو الاتصال بالإنترنت في بيئة التشغيل.
+            </p>
+            <pre class="code ltr">pytest tests/test_qwen_patient_generator.py -v</pre>
+          </div>
+
+        </div>
+
+        <h3 style="margin-top:1.8rem">التبديل بين Qwen والنموذج البديل الثابت</h3>
+        <p>
+          مفتاح الإعداد <code class="ltr">PATIENT_REPLY_BACKEND</code> في ملف
+          <code class="ltr">.env</code> يتحكم بالتنفيذ المستخدم فعليًا (<code class="ltr">app/api/deps.py</code>):
+        </p>
+        <pre class="code ltr">PATIENT_REPLY_BACKEND=qwen   # الافتراضي -- نموذج Qwen المحلي الحقيقي
+PATIENT_REPLY_BACKEND=stub   # رد ثابت بلا أي اعتماد على ML، للاختبارات السريعة فقط</pre>
+        <p>
+          مجموعة الاختبارات العامة (<code class="ltr">test_scenarios.py</code>،
+          <code class="ltr">test_sessions_flow.py</code>) تستخدم <code class="ltr">stub</code> افتراضيًا
+          عبر override في <code class="ltr">tests/conftest.py</code> -- لأنها تختبر تدفّق قاعدة
+          البيانات لا جودة النموذج، فتبقى سريعة وحتمية النتيجة.
+        </p>
+
+        <h3 style="margin-top:1.8rem">ماذا لو تعذّر تحميل النموذج؟</h3>
+        <p>
+          أول استخدام يُنزّل نحو 1GB من الأوزان إلى
+          <code class="ltr">~/.cache/huggingface</code> (يحتاج اتصالًا بالإنترنت لمرة واحدة فقط، ثم
+          يبقى محفوظًا محليًا). إن تعذّر ذلك -- لا اتصال، مساحة قرص غير كافية، أو أي عطل أثناء التوليد --
+          <code class="ltr">QwenPatientReplyGenerator</code> لا يُسقط الطلب أبدًا، بل يعيد ردًا بديلًا
+          واضحًا بدلاً من ذلك:
+        </p>
+        <pre class="code ltr">[تعذّر توليد رد النموذج المحلي حاليًا] بخصوص سؤالك: أين يؤلمك بالضبط؟</pre>
+
+        <div class="note">
+          <b>ملاحظة صادقة حول الجودة:</b> بحجم 0.5B معامل، هذا نموذج صغير جدًا مخصص للتطوير والاختبار
+          فقط -- عربيته حقيقية ومفهومة غالبًا، لكنه أحيانًا يخرج عن الشخصية أو يُصيغ جملة بشكل غريب
+          (مثال حقيقي آخر من نفس الجلسات التجريبية: على سؤال "منذ متى بدأ الألم؟" أجاب "أعتذر، لكن
+          المعلومات التي قدمتها لم تكن موثقة..." بدلاً من إجابة مباشرة). هذا سلوك متوقع لنموذج بهذا
+          الحجم، وليس خللًا في الربط التقني -- الهدف إثبات تدفّق كامل يعمل فعليًا، لا محادثة سريرية دقيقة.
+        </div>
+      </section>
+
+    </main>
+  </div>
+
+  <footer>
+    <div class="wrap">
+      <p>
+        وثائق تفاعلية إضافية (Swagger UI) متاحة أثناء تشغيل الخادم على
+        <code class="ltr">/docs</code>. جميع الأمثلة أعلاه مأخوذة من تشغيل فعلي للمشروع، وليست بيانات تجريبية وهمية.
+      </p>
+    </div>
+  </footer>
+
+</div>
+
+<script>
+(function(){
+  try{
+    var links = Array.prototype.slice.call(document.querySelectorAll('.navlink'));
+    var targets = links
+      .map(function(l){ return document.querySelector(l.getAttribute('href')); })
+      .filter(Boolean);
+    if(!('IntersectionObserver' in window) || targets.length === 0) return;
+
+    var byId = {};
+    links.forEach(function(l){ byId[l.getAttribute('href').slice(1)] = l; });
+
+    var observer = new IntersectionObserver(function(entries){
+      entries.forEach(function(entry){
+        var link = byId[entry.target.id];
+        if(!link) return;
+        if(entry.isIntersecting){
+          links.forEach(function(l){ l.classList.remove('active'); });
+          link.classList.add('active');
+        }
+      });
+    }, { rootMargin: '-10% 0px -70% 0px', threshold: 0 });
+
+    targets.forEach(function(t){ observer.observe(t); });
+  }catch(e){ /* progressive enhancement only */ }
+})();
+</script>

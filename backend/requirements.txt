@@ -19,13 +19,21 @@ accelerate==1.0.1
 
 python-multipart==0.0.12  # required by FastAPI for UploadFile / multipart form parsing (voice endpoints)
 
-# Local voice pipeline (app/infrastructure/local_whisper_stt_adapter.py, local_tts_adapter.py).
-faster-whisper==1.0.3      # STT: CTranslate2-based, no system ffmpeg needed (bundled via the `av` wheel)
-gtts==2.5.4                # TTS: tiny pure-Python client for Google Translate's TTS endpoint (network call
-                            # per request, not offline -- see local_tts_adapter.py's docstring)
-miniaudio==1.71            # TTS: decodes gTTS's MP3 output to raw PCM so local_tts_adapter.py can re-encode
-                            # it as WAV -- ships prebuilt wheels, no system ffmpeg needed
+# Colab-hosted voice pipeline (app/infrastructure/colab_stt_adapter.py, colab_tts_adapter.py) --
+# the default STT/TTS backend now (see Settings.stt_backend/tts_backend in app/config.py). Both
+# adapters call out over HTTP to the Colab notebook at colab/leva_stt_tts_notebook.py; httpx below
+# (already a dependency for testing) is the only library they need.
 
-httpx==0.27.2
+# DEPRECATED -- only used by app/infrastructure/legacy/local_whisper_stt_adapter.py and
+# legacy/local_tts_adapter.py, kept for rollback (STT_BACKEND=whisper / TTS_BACKEND=gtts). Not
+# needed for the Colab-backed adapters above. Candidates for removal from this file once the
+# Colab backend is confirmed working end-to-end -- do not remove without confirming first.
+faster-whisper==1.0.3      # legacy STT: CTranslate2-based, no system ffmpeg needed (bundled via the `av` wheel)
+gtts==2.5.4                # legacy TTS: tiny pure-Python client for Google Translate's TTS endpoint (network
+                            # call per request, not offline -- see legacy/local_tts_adapter.py's docstring)
+miniaudio==1.71            # legacy TTS: decodes gTTS's MP3 output to raw PCM so legacy/local_tts_adapter.py
+                            # can re-encode it as WAV -- ships prebuilt wheels, no system ffmpeg needed
+
+httpx==0.27.2  # also used directly by colab_stt_adapter.py / colab_tts_adapter.py for the Colab API calls
 pytest==8.3.3
 pytest-asyncio==0.24.0

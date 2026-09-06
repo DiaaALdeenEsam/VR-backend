@@ -100,6 +100,37 @@ class EvaluationCriterion:
 
 
 @dataclass
+class Evidence:
+    """One ranked retrieval result from the RAG API (see EvidenceRetriever port
+    in app/domain/repositories.py, and app/infrastructure/rag_client_adapter.py).
+
+    Metadata fields (chapter/section/content_type/source_file/title) are
+    flattened directly onto this entity rather than a nested sub-object --
+    matching every other entity in this module, all of which are flat.
+
+    `distance` is a vector-search distance from the RAG API, not a confidence
+    score -- lower means a better match. Do not treat it as a probability or
+    invert it into one.
+
+    This is raw retrieval output. It must never be handed to a
+    PatientReplyGenerator's prompt unfiltered -- see
+    app/infrastructure/qwen_patient_generator.py's curation step, which is
+    the boundary that keeps this from leaking diagnostic content to the
+    simulated patient.
+    """
+
+    id: str
+    rank: int
+    text: str
+    distance: float
+    chapter: str | None = None
+    section: str | None = None
+    content_type: str | None = None
+    source_file: str | None = None
+    title: str | None = None
+
+
+@dataclass
 class SessionEvaluation:
     """Result of evaluating a completed session against a scenario's gold standard.
 

@@ -1,4 +1,11 @@
-"""Local STT adapter backed by faster-whisper (a CTranslate2 reimplementation
+"""DEPRECATED -- superseded by app/infrastructure/colab_stt_adapter.py (calls
+a self-hosted Whisper model over HTTP; see colab/leva_stt_tts_notebook.py).
+
+Kept only for rollback: set STT_BACKEND=whisper to switch app/api/deps.py's
+get_speech_to_text_port() back to this adapter. Not otherwise imported by
+anything. Do not build new features against this -- ask before deleting it.
+
+Local STT adapter backed by faster-whisper (a CTranslate2 reimplementation
 of OpenAI's Whisper).
 
 Runs fully offline on CPU once the "tiny" model weights are cached (~75MB,

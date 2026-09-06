@@ -1,4 +1,11 @@
-"""Local TTS adapter backed by gTTS (a tiny client for Google Translate's TTS endpoint).
+"""DEPRECATED -- superseded by app/infrastructure/colab_tts_adapter.py (calls
+a self-hosted leva-tts model over HTTP; see colab/leva_stt_tts_notebook.py).
+
+Kept only for rollback: set TTS_BACKEND=gtts to switch app/api/deps.py's
+get_text_to_speech_port() back to this adapter. Not otherwise imported by
+anything. Do not build new features against this -- ask before deleting it.
+
+Local TTS adapter backed by gTTS (a tiny client for Google Translate's TTS endpoint).
 
 Honest caveat despite the "Local" name (matching this project's adapter-naming
 convention, e.g. LocalWhisperSTTAdapter): gTTS makes a network call per

@@ -9,7 +9,12 @@ from __future__ import annotations
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
-from app.domain.exceptions import DomainError, InvalidChoiceError, NotFoundError
+from app.domain.exceptions import (
+    DomainError,
+    InvalidChoiceError,
+    NotFoundError,
+    VoiceServiceUnavailableError,
+)
 
 
 def register_error_handlers(app: FastAPI) -> None:
@@ -20,6 +25,13 @@ def register_error_handlers(app: FastAPI) -> None:
     @app.exception_handler(InvalidChoiceError)
     async def _invalid_choice(request: Request, exc: InvalidChoiceError) -> JSONResponse:
         return JSONResponse(status_code=400, content={"detail": str(exc)})
+
+    @app.exception_handler(VoiceServiceUnavailableError)
+    async def _voice_service_unavailable(request: Request, exc: VoiceServiceUnavailableError) -> JSONResponse:
+        # 502: this process is acting as a gateway to the remote Colab-hosted
+        # STT/TTS API, and that upstream call is what failed -- distinct from
+        # the generic DomainError -> 400 "bad request" mapping below.
+        return JSONResponse(status_code=502, content={"detail": str(exc)})
 
     @app.exception_handler(DomainError)
     async def _domain_error(request: Request, exc: DomainError) -> JSONResponse:

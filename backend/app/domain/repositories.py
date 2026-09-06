@@ -97,7 +97,16 @@ class PatientReplyGenerator(ABC):
         scenario: e.Scenario,
         history: list[e.Message],
         user_message: str,
-    ) -> str: ...
+        evidence: list[e.Evidence] | None = None,
+    ) -> str:
+        """`evidence` is RAG-retrieved context for `user_message` (see
+        EvidenceRetriever below), or None/empty when retrieval wasn't
+        attempted or failed. Optional with a default so this stays
+        backward-compatible with callers that don't pass it. Implementations
+        MUST NOT fold `evidence[i].text` into the model prompt unfiltered --
+        see app/infrastructure/qwen_patient_generator.py for the curation
+        step this port's real implementation applies before that happens.
+        """
 
 
 class EvaluationGenerator(ABC):
@@ -130,6 +139,29 @@ class SpeechToTextPort(ABC):
 
     @abstractmethod
     async def transcribe(self, audio_bytes: bytes, filename: str | None = None) -> str: ...
+
+
+class EvidenceRetriever(ABC):
+    """Port for retrieving ranked clinical evidence from a RAG (retrieval-only)
+    API, keyed on a doctor's chat message. Same shape as
+    PatientReplyGenerator/SpeechToTextPort/TextToSpeechPort -- an external
+    capability the application layer calls into, not a persistence
+    repository.
+
+    Retrieval failure is expected to be non-fatal to a chat turn (see
+    PostMessageUseCase.execute()): callers should be prepared to catch
+    RagServiceUnavailableError (app/domain/exceptions.py) around this and
+    proceed with no evidence rather than let a RAG outage break the
+    conversation.
+    """
+
+    @abstractmethod
+    async def retrieve(
+        self,
+        query: str,
+        top_k: int = 5,
+        content_types: list[str] | None = None,
+    ) -> list[e.Evidence]: ...
 
 
 class TextToSpeechPort(ABC):

@@ -42,3 +42,35 @@ class MissingGoldStandardError(DomainError):
     def __init__(self, scenario_id: Any) -> None:
         self.scenario_id = scenario_id
         super().__init__(f"scenario {scenario_id!r} has no gold_standard set; cannot evaluate")
+
+
+class VoiceServiceUnavailableError(DomainError):
+    """Raised when a remote STT/TTS backend (e.g. the Colab-hosted API) can't be
+    reached or fails -- not configured, connection refused/timed out, or an
+    error response. Distinct from the generic DomainError -> 400 mapping: this
+    is "an upstream service is unreachable/failing", not "bad request", so it
+    gets its own handler (see app/api/error_handlers.py) mapping to 502.
+    """
+
+    def __init__(self, service: str, reason: str) -> None:
+        self.service = service
+        self.reason = reason
+        super().__init__(f"{service} is unavailable: {reason}")
+
+
+class RagServiceUnavailableError(DomainError):
+    """Raised when the RAG API (app/infrastructure/rag_client_adapter.py) can't
+    be reached or fails -- not configured, connection refused/timed out, or an
+    error response. Same shape and reasoning as VoiceServiceUnavailableError.
+
+    Unlike VoiceServiceUnavailableError, this is NOT given a registered
+    handler in app/api/error_handlers.py (no 502 mapping) -- by design, this
+    exception is meant to be caught inside PostMessageUseCase and turned into
+    a graceful degrade (proceed with no evidence) rather than ever reaching
+    the API layer. See PostMessageUseCase.execute() for where that happens.
+    """
+
+    def __init__(self, service: str, reason: str) -> None:
+        self.service = service
+        self.reason = reason
+        super().__init__(f"{service} is unavailable: {reason}")

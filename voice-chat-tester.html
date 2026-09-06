@@ -1,0 +1,882 @@
+<!DOCTYPE html>
+<html dir="rtl" lang="ar">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>أداة اختبار المحادثة الصوتية</title>
+<style>
+  :root {
+    --bg: #f4f5f7;
+    --panel: #ffffff;
+    --border: #d8dce2;
+    --text: #1d2129;
+    --muted: #5c6470;
+    --accent: #2f5fb3;
+    --accent-hover: #244a8f;
+    --accent-contrast: #ffffff;
+    --ok-bg: #e6f4ea;
+    --ok-text: #1a7f37;
+    --ok-border: #b7dfc2;
+    --err-bg: #fdecea;
+    --err-text: #b42318;
+    --err-border: #f3b8b2;
+    --warn-bg: #fff8e5;
+    --warn-text: #8a5a00;
+    --warn-border: #f0dd9e;
+    --focus-ring: #2f5fb3;
+    --mono-bg: #14171c;
+    --mono-text: #d7dbe0;
+    --mono-key: #7dc4ff;
+    --radius: 10px;
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: "Segoe UI", Tahoma, Arial, sans-serif;
+    font-size: 15px;
+    line-height: 1.6;
+  }
+
+  body {
+    padding: 24px;
+    max-width: 980px;
+    margin: 0 auto;
+  }
+
+  header.app-header {
+    margin-bottom: 20px;
+  }
+
+  header.app-header h1 {
+    font-size: 20px;
+    margin: 0 0 4px;
+  }
+
+  header.app-header p {
+    margin: 0;
+    color: var(--muted);
+    font-size: 13.5px;
+  }
+
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 18px 20px;
+    margin-bottom: 18px;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+  }
+
+  .panel h2 {
+    font-size: 14px;
+    margin: 0 0 14px;
+    color: var(--muted);
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+  }
+
+  .field-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 12px 16px;
+  }
+
+  .field {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+  }
+
+  .field label {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text);
+  }
+
+  .field .hint {
+    font-size: 12px;
+    color: var(--muted);
+  }
+
+  input[type="text"], input[type="password"] {
+    font: inherit;
+    padding: 9px 11px;
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    background: #fbfbfc;
+    color: var(--text);
+    width: 100%;
+  }
+
+  input[type="text"]:focus-visible, input[type="password"]:focus-visible,
+  button:focus-visible, summary:focus-visible {
+    outline: 3px solid var(--focus-ring);
+    outline-offset: 2px;
+  }
+
+  .cors-note {
+    margin-top: 12px;
+    font-size: 12.5px;
+    color: var(--muted);
+    background: #f0f3f8;
+    border: 1px dashed var(--border);
+    border-radius: 7px;
+    padding: 8px 12px;
+  }
+
+  /* --- Recorder panel --- */
+
+  .recorder-row {
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    flex-wrap: wrap;
+  }
+
+  .mic-button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    padding: 14px 22px;
+    border-radius: 999px;
+    border: none;
+    font: inherit;
+    font-weight: 700;
+    font-size: 15px;
+    cursor: pointer;
+    background: var(--accent);
+    color: var(--accent-contrast);
+    transition: background 0.15s ease, transform 0.1s ease;
+    min-width: 210px;
+  }
+
+  .mic-button:hover:not(:disabled) { background: var(--accent-hover); }
+  .mic-button:active:not(:disabled) { transform: scale(0.98); }
+
+  .mic-button:disabled {
+    background: #b9bfc9;
+    cursor: not-allowed;
+  }
+
+  .mic-button.recording {
+    background: #c8281f;
+    animation: pulse 1.4s ease-in-out infinite;
+  }
+
+  .mic-button.sending {
+    background: #8a5a00;
+  }
+
+  @keyframes pulse {
+    0%   { box-shadow: 0 0 0 0 rgba(200,40,31,0.45); }
+    70%  { box-shadow: 0 0 0 14px rgba(200,40,31,0); }
+    100% { box-shadow: 0 0 0 0 rgba(200,40,31,0); }
+  }
+
+  .mic-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: currentColor;
+    flex: none;
+  }
+
+  .rec-timer {
+    font-variant-numeric: tabular-nums;
+    font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace;
+    font-size: 15px;
+    color: var(--muted);
+    direction: ltr;
+    min-width: 3.5em;
+  }
+
+  .recorder-status {
+    font-size: 13.5px;
+    color: var(--muted);
+  }
+
+  .inline-message {
+    margin-top: 12px;
+    padding: 9px 12px;
+    border-radius: 7px;
+    font-size: 13.5px;
+    display: none;
+  }
+
+  .inline-message.show { display: block; }
+
+  .inline-message.warn {
+    background: var(--warn-bg);
+    color: var(--warn-text);
+    border: 1px solid var(--warn-border);
+  }
+
+  .inline-message.err {
+    background: var(--err-bg);
+    color: var(--err-text);
+    border: 1px solid var(--err-border);
+  }
+
+  /* --- Log panel --- */
+
+  .log-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 14px;
+  }
+
+  .log-header h2 { margin: 0; }
+
+  .btn-secondary {
+    font: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    padding: 7px 14px;
+    border-radius: 7px;
+    border: 1px solid var(--border);
+    background: #fbfbfc;
+    color: var(--text);
+    cursor: pointer;
+  }
+
+  .btn-secondary:hover { background: #eef0f3; }
+
+  .log-empty {
+    color: var(--muted);
+    font-size: 13.5px;
+    padding: 10px 2px;
+  }
+
+  .turn-card {
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 14px 16px;
+    margin-bottom: 12px;
+    background: #fbfbfc;
+  }
+
+  .turn-card.ok { border-inline-start: 4px solid var(--ok-text); }
+  .turn-card.err { border-inline-start: 4px solid var(--err-text); }
+  .turn-card.pending { border-inline-start: 4px solid var(--warn-text); }
+
+  .turn-top {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 10px;
+  }
+
+  .badge {
+    font-size: 12px;
+    font-weight: 700;
+    padding: 3px 9px;
+    border-radius: 999px;
+    direction: ltr;
+  }
+
+  .badge.ok { background: var(--ok-bg); color: var(--ok-text); border: 1px solid var(--ok-border); }
+  .badge.err { background: var(--err-bg); color: var(--err-text); border: 1px solid var(--err-border); }
+  .badge.pending { background: var(--warn-bg); color: var(--warn-text); border: 1px solid var(--warn-border); }
+
+  .turn-meta {
+    font-size: 12.5px;
+    color: var(--muted);
+    direction: ltr;
+    unicode-bidi: isolate;
+  }
+
+  .turn-reply-text {
+    font-size: 14.5px;
+    background: #fff;
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    padding: 10px 12px;
+    margin-bottom: 10px;
+    white-space: pre-wrap;
+  }
+
+  .turn-reply-text .label, .turn-transcript .label {
+    display: block;
+    font-size: 11.5px;
+    color: var(--muted);
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    margin-bottom: 4px;
+  }
+
+  .turn-transcript {
+    font-size: 13.5px;
+    color: var(--muted);
+    margin-bottom: 10px;
+  }
+
+  audio { width: 100%; margin-bottom: 10px; }
+
+  details.raw-block summary {
+    cursor: pointer;
+    font-size: 12.5px;
+    font-weight: 600;
+    color: var(--accent);
+    padding: 4px 0;
+  }
+
+  .mono {
+    font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace;
+    font-size: 12.5px;
+    direction: ltr;
+    text-align: left;
+    unicode-bidi: isolate;
+    background: var(--mono-bg);
+    color: var(--mono-text);
+    border-radius: 7px;
+    padding: 12px 14px;
+    overflow-x: auto;
+    white-space: pre-wrap;
+    word-break: break-word;
+    margin: 8px 0 0;
+  }
+
+  .mono .k { color: var(--mono-key); }
+
+  footer.app-footer {
+    text-align: center;
+    color: var(--muted);
+    font-size: 12px;
+    margin-top: 28px;
+  }
+
+  .visually-hidden {
+    position: absolute;
+    width: 1px; height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+</style>
+</head>
+<body>
+
+<header class="app-header">
+  <h1>أداة اختبار المحادثة الصوتية</h1>
+  <p>وحدة اختبار مباشرة لنقطة النهاية <code class="mono" style="display:inline-block;padding:2px 6px;margin:0;">POST /sessions/{session_id}/chat-voice</code> — لتأكيد تأثير مصدر الأدلة (RAG) في الردود بصريًا.</p>
+</header>
+
+<!-- Connection panel -->
+<section class="panel" aria-labelledby="conn-heading">
+  <h2 id="conn-heading">إعدادات الاتصال</h2>
+  <div class="field-grid">
+    <div class="field">
+      <label for="base-url">الرابط الأساسي للخادم (Base URL)</label>
+      <input type="text" id="base-url" value="http://127.0.0.1:8000" autocomplete="off" spellcheck="false" dir="ltr">
+      <span class="hint">مثال: http://127.0.0.1:8000 — بدون شرطة مائلة في النهاية.</span>
+    </div>
+    <div class="field">
+      <label for="session-id">معرّف الجلسة (Session ID)</label>
+      <input type="text" id="session-id" placeholder="أدخل معرّف جلسة موجودة بالفعل" autocomplete="off" spellcheck="false" dir="ltr">
+      <span class="hint">لا تُنشئ هذه الأداة جلسة تلقائيًا — أنشئ الجلسة أولًا عبر POST /sessions ثم الصق معرّفها هنا.</span>
+    </div>
+    <div class="field">
+      <label for="auth-value">قيمة رأس Authorization (اختياري)</label>
+      <input type="password" id="auth-value" placeholder="غير مطلوب من نقطة النهاية الحالية" autocomplete="off" spellcheck="false" dir="ltr">
+      <span class="hint">تأكّدنا من الكود الفعلي أن هذه النقطة لا تتطلب أي مصادقة حاليًا. اترك هذا الحقل فارغًا ما لم يُضَف لاحقًا.</span>
+    </div>
+  </div>
+  <div class="cors-note">
+    ⚠️ قد تظهر أخطاء CORS إذا لم يسمح الخادم بأصل هذه الصفحة (خصوصًا عند فتحها مباشرة عبر <span class="mono" style="display:inline;padding:2px 6px;">file://</span>). فعّل CORS للخادم المحلي عبر متغيّر <span class="mono" style="display:inline;padding:2px 6px;">CORS_ORIGINS</span>، أو شغّل هذا الملف عبر خادم HTTP محلي بسيط (مثل <span class="mono" style="display:inline;padding:2px 6px;">python -m http.server</span>) بدلاً من فتحه مباشرة.
+    ملاحظة إضافية: الخادم يفعّل <span class="mono" style="display:inline;padding:2px 6px;">allow_credentials=True</span> — إذا كان مضبوطًا على السماح بكل الأصول (*)، قد يرفض المتصفح الطلب رغم ذلك؛ اضبط أصلًا محددًا في تلك الحالة.
+  </div>
+</section>
+
+<!-- Recorder panel -->
+<section class="panel" aria-labelledby="rec-heading">
+  <h2 id="rec-heading">التسجيل والإرسال</h2>
+  <div class="recorder-row">
+    <button type="button" id="mic-button" class="mic-button" aria-pressed="false">
+      <span class="mic-dot" aria-hidden="true"></span>
+      <span id="mic-label">ابدأ التسجيل</span>
+    </button>
+    <span class="rec-timer" id="rec-timer">00:00</span>
+    <span class="recorder-status" id="recorder-status" role="status" aria-live="polite"></span>
+  </div>
+  <div class="inline-message" id="mic-warning" role="alert"></div>
+</section>
+
+<!-- Log panel -->
+<section class="panel" aria-labelledby="log-heading">
+  <div class="log-header">
+    <h2 id="log-heading" style="margin:0;">سجل المحادثة</h2>
+    <button type="button" class="btn-secondary" id="clear-log">مسح السجل</button>
+  </div>
+  <div id="log-list">
+    <p class="log-empty" id="log-empty">لا توجد محادثات بعد. سجّل مقطعًا صوتيًا لبدء أول محادثة.</p>
+  </div>
+</section>
+
+<footer class="app-footer">
+  أداة اختبار جانب العميل فقط — لا تتصل بأي شيء غير نقطة النهاية المذكورة أعلاه، ولا تُرسل أي بيانات إلى أي خادم آخر.
+</footer>
+
+<script>
+(function () {
+  "use strict";
+
+  // --- DOM refs -------------------------------------------------------
+  const baseUrlInput = document.getElementById("base-url");
+  const sessionIdInput = document.getElementById("session-id");
+  const authValueInput = document.getElementById("auth-value");
+
+  const micButton = document.getElementById("mic-button");
+  const micLabel = document.getElementById("mic-label");
+  const recTimer = document.getElementById("rec-timer");
+  const recorderStatus = document.getElementById("recorder-status");
+  const micWarning = document.getElementById("mic-warning");
+
+  const logList = document.getElementById("log-list");
+  const logEmpty = document.getElementById("log-empty");
+  const clearLogBtn = document.getElementById("clear-log");
+
+  // --- Constants --------------------------------------------------------
+  const MIN_RECORDING_MS = 500; // reject anything shorter than this
+  const CANDIDATE_MIME_TYPES = [
+    "audio/webm;codecs=opus",
+    "audio/webm",
+    "audio/ogg;codecs=opus",
+    "audio/ogg",
+    "audio/mp4",
+  ];
+  const EXTENSION_BY_MIME = {
+    "audio/webm": "webm",
+    "audio/ogg": "ogg",
+    "audio/mp4": "m4a",
+    "audio/wav": "wav",
+  };
+
+  // --- State --------------------------------------------------------
+  let mediaRecorder = null;
+  let mediaStream = null;
+  let audioChunks = [];
+  let recordingStartedAt = 0;
+  let timerHandle = null;
+  let uiState = "idle"; // idle | recording | sending
+
+  // --- Helpers --------------------------------------------------------
+
+  function pickSupportedMimeType() {
+    if (typeof MediaRecorder === "undefined" || !MediaRecorder.isTypeSupported) return "";
+    for (const candidate of CANDIDATE_MIME_TYPES) {
+      if (MediaRecorder.isTypeSupported(candidate)) return candidate;
+    }
+    return "";
+  }
+
+  function extensionForMime(mime) {
+    const base = (mime || "").split(";")[0].trim();
+    return EXTENSION_BY_MIME[base] || "webm";
+  }
+
+  function formatTimer(ms) {
+    const totalSeconds = Math.floor(ms / 1000);
+    const m = String(Math.floor(totalSeconds / 60)).padStart(2, "0");
+    const s = String(totalSeconds % 60).padStart(2, "0");
+    return m + ":" + s;
+  }
+
+  function setMicState(next) {
+    uiState = next;
+    micButton.classList.remove("recording", "sending");
+    if (next === "recording") {
+      micButton.classList.add("recording");
+      micButton.setAttribute("aria-pressed", "true");
+      micLabel.textContent = "إيقاف وإرسال";
+      micButton.disabled = false;
+    } else if (next === "sending") {
+      micButton.classList.add("sending");
+      micButton.setAttribute("aria-pressed", "false");
+      micLabel.textContent = "جارٍ الإرسال...";
+      micButton.disabled = true;
+    } else {
+      micButton.setAttribute("aria-pressed", "false");
+      micLabel.textContent = "ابدأ التسجيل";
+      micButton.disabled = false;
+    }
+  }
+
+  function showMicWarning(message, kind) {
+    micWarning.textContent = message;
+    micWarning.className = "inline-message show " + (kind === "err" ? "err" : "warn");
+  }
+
+  function clearMicWarning() {
+    micWarning.textContent = "";
+    micWarning.className = "inline-message";
+  }
+
+  function validateConnectionFields() {
+    const baseUrl = baseUrlInput.value.trim();
+    const sessionId = sessionIdInput.value.trim();
+    if (!baseUrl) return "الرجاء إدخال الرابط الأساسي للخادم قبل التسجيل.";
+    if (!sessionId) return "الرجاء إدخال معرّف الجلسة قبل التسجيل.";
+    return null;
+  }
+
+  // --- Recording flow -------------------------------------------------
+
+  async function startRecording() {
+    clearMicWarning();
+
+    const validationError = validateConnectionFields();
+    if (validationError) {
+      showMicWarning(validationError, "warn");
+      return;
+    }
+
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      showMicWarning("هذا المتصفح لا يدعم الوصول إلى الميكروفون (getUserMedia).", "err");
+      return;
+    }
+
+    try {
+      mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    } catch (err) {
+      showMicWarning("تم رفض إذن الميكروفون أو تعذّر الوصول إليه: " + (err && err.message ? err.message : String(err)), "err");
+      return;
+    }
+
+    const mimeType = pickSupportedMimeType();
+    try {
+      mediaRecorder = mimeType ? new MediaRecorder(mediaStream, { mimeType }) : new MediaRecorder(mediaStream);
+    } catch (err) {
+      showMicWarning("تعذّر إنشاء مسجّل الصوت (MediaRecorder): " + (err && err.message ? err.message : String(err)), "err");
+      mediaStream.getTracks().forEach((t) => t.stop());
+      return;
+    }
+
+    audioChunks = [];
+    mediaRecorder.addEventListener("dataavailable", (e) => {
+      if (e.data && e.data.size > 0) audioChunks.push(e.data);
+    });
+    mediaRecorder.addEventListener("stop", handleRecordingStopped);
+
+    mediaRecorder.start();
+    recordingStartedAt = performance.now();
+    setMicState("recording");
+    recorderStatus.textContent = "التسجيل جارٍ...";
+
+    timerHandle = setInterval(() => {
+      recTimer.textContent = formatTimer(performance.now() - recordingStartedAt);
+    }, 200);
+  }
+
+  function stopRecording() {
+    if (!mediaRecorder || mediaRecorder.state === "inactive") return;
+    mediaRecorder.stop();
+    if (mediaStream) mediaStream.getTracks().forEach((t) => t.stop());
+    if (timerHandle) {
+      clearInterval(timerHandle);
+      timerHandle = null;
+    }
+  }
+
+  function handleRecordingStopped() {
+    const durationMs = performance.now() - recordingStartedAt;
+    recTimer.textContent = "00:00";
+
+    const mimeType = (mediaRecorder && mediaRecorder.mimeType) || "audio/webm";
+    const blob = new Blob(audioChunks, { type: mimeType });
+    audioChunks = [];
+
+    if (durationMs < MIN_RECORDING_MS || blob.size === 0) {
+      showMicWarning("التسجيل قصير جدًا أو فارغ (أقل من " + MIN_RECORDING_MS + " مللي ثانية). حاول مرة أخرى.", "warn");
+      recorderStatus.textContent = "";
+      setMicState("idle");
+      return;
+    }
+
+    recorderStatus.textContent = "";
+    sendToBackend(blob, mimeType, durationMs);
+  }
+
+  micButton.addEventListener("click", () => {
+    if (uiState === "idle") {
+      startRecording();
+    } else if (uiState === "recording") {
+      stopRecording();
+    }
+    // "sending" state: button is disabled, no-op.
+  });
+
+  // --- Sending + response handling -------------------------------------------------
+
+  async function sendToBackend(blob, mimeType, durationMs) {
+    setMicState("sending");
+    recorderStatus.textContent = "في انتظار الرد...";
+
+    const baseUrl = baseUrlInput.value.trim().replace(/\/+$/, "");
+    const sessionId = sessionIdInput.value.trim();
+    const authValue = authValueInput.value.trim();
+    const url = baseUrl + "/sessions/" + encodeURIComponent(sessionId) + "/chat-voice";
+
+    const extension = extensionForMime(mimeType);
+    const filename = "recording." + extension;
+
+    const formData = new FormData();
+    formData.append("file", blob, filename);
+
+    const headers = {};
+    if (authValue) headers["Authorization"] = authValue;
+
+    const requestSummary = {
+      method: "POST",
+      url: url,
+      headers: headers,
+      body: "multipart/form-data; field \"file\" = " + filename + " (" + mimeType + ", " + blob.size + " bytes)",
+    };
+
+    const startedAt = performance.now();
+    let response = null;
+    let networkError = null;
+
+    try {
+      response = await fetch(url, { method: "POST", body: formData, headers: headers });
+    } catch (err) {
+      networkError = err;
+    }
+
+    const latencyMs = Math.round(performance.now() - startedAt);
+
+    if (networkError) {
+      addTurn({
+        ok: false,
+        status: null,
+        statusText: "Network Error",
+        latencyMs: latencyMs,
+        durationMs: durationMs,
+        transcript: null,
+        replyText: null,
+        errorMessage: (networkError && networkError.message) || String(networkError),
+        rawRequest: requestSummary,
+        rawResponse: null,
+        audioUrl: null,
+        audioContentType: null,
+      });
+      recorderStatus.textContent = "";
+      setMicState("idle");
+      return;
+    }
+
+    const contentTypeHeader = response.headers.get("content-type") || "";
+    const bodyText = await response.text();
+
+    let parsed = null;
+    let parseError = null;
+    try {
+      parsed = bodyText ? JSON.parse(bodyText) : null;
+    } catch (err) {
+      parseError = err;
+    }
+
+    const rawResponse = {
+      status: response.status,
+      statusText: response.statusText,
+      contentType: contentTypeHeader,
+      body: bodyText,
+    };
+
+    if (!response.ok) {
+      const detail = parsed && typeof parsed === "object" && "detail" in parsed ? parsed.detail : null;
+      addTurn({
+        ok: false,
+        status: response.status,
+        statusText: response.statusText,
+        latencyMs: latencyMs,
+        durationMs: durationMs,
+        transcript: null,
+        replyText: null,
+        errorMessage: detail !== null ? String(detail) : "استجابة غير ناجحة، انظر النص الخام أدناه.",
+        rawRequest: requestSummary,
+        rawResponse: rawResponse,
+        audioUrl: null,
+        audioContentType: null,
+      });
+      recorderStatus.textContent = "";
+      setMicState("idle");
+      return;
+    }
+
+    // Expected shape: { transcribed_text, reply: {id, role, content, created_at}, reply_audio_base64, reply_audio_content_type }
+    const hasExpectedShape =
+      parsed &&
+      typeof parsed === "object" &&
+      typeof parsed.transcribed_text === "string" &&
+      parsed.reply &&
+      typeof parsed.reply.content === "string" &&
+      typeof parsed.reply_audio_base64 === "string" &&
+      typeof parsed.reply_audio_content_type === "string";
+
+    if (!hasExpectedShape || parseError) {
+      addTurn({
+        ok: false,
+        status: response.status,
+        statusText: response.statusText,
+        latencyMs: latencyMs,
+        durationMs: durationMs,
+        transcript: null,
+        replyText: null,
+        errorMessage: parseError
+          ? "فشل تحليل الاستجابة كـ JSON."
+          : "شكل الاستجابة لا يطابق ChatVoiceResponse المتوقع.",
+        rawRequest: requestSummary,
+        rawResponse: rawResponse,
+        audioUrl: null,
+        audioContentType: null,
+      });
+      recorderStatus.textContent = "";
+      setMicState("idle");
+      return;
+    }
+
+    let audioUrl = null;
+    try {
+      const audioBlob = base64ToBlob(parsed.reply_audio_base64, parsed.reply_audio_content_type);
+      audioUrl = URL.createObjectURL(audioBlob);
+    } catch (err) {
+      // Audio decode failed -- still show the text reply + raw data, just no player.
+      audioUrl = null;
+    }
+
+    addTurn({
+      ok: true,
+      status: response.status,
+      statusText: response.statusText,
+      latencyMs: latencyMs,
+      durationMs: durationMs,
+      transcript: parsed.transcribed_text,
+      replyText: parsed.reply.content,
+      errorMessage: null,
+      rawRequest: requestSummary,
+      rawResponse: rawResponse,
+      audioUrl: audioUrl,
+      audioContentType: parsed.reply_audio_content_type,
+    });
+
+    recorderStatus.textContent = "";
+    setMicState("idle");
+  }
+
+  function base64ToBlob(base64, contentType) {
+    const binary = atob(base64);
+    const len = binary.length;
+    const bytes = new Uint8Array(len);
+    for (let i = 0; i < len; i++) bytes[i] = binary.charCodeAt(i);
+    return new Blob([bytes], { type: contentType || "audio/wav" });
+  }
+
+  // --- Log rendering -------------------------------------------------
+
+  function escapeHtml(str) {
+    return String(str)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  }
+
+  function prettyJson(value) {
+    try {
+      return JSON.stringify(value, null, 2);
+    } catch (err) {
+      return String(value);
+    }
+  }
+
+  function addTurn(turn) {
+    logEmpty.style.display = "none";
+
+    const card = document.createElement("article");
+    card.className = "turn-card " + (turn.ok ? "ok" : "err");
+
+    const statusLabel = turn.status !== null ? turn.status + " " + turn.statusText : "Network Error";
+    const badgeClass = turn.ok ? "ok" : "err";
+    const timestamp = new Date().toLocaleString("ar-EG", { hour12: false });
+
+    let html = "";
+    html += '<div class="turn-top">';
+    html += '<span class="badge ' + badgeClass + '">' + escapeHtml(statusLabel) + "</span>";
+    html += '<span class="turn-meta">' + escapeHtml(timestamp) + " · " + turn.latencyMs + "ms latency";
+    if (turn.durationMs) html += " · recording " + Math.round(turn.durationMs) + "ms";
+    html += "</span>";
+    html += "</div>";
+
+    if (turn.transcript) {
+      html += '<div class="turn-transcript"><span class="label">النص المفرَّغ من الصوت (Transcript)</span>' + escapeHtml(turn.transcript) + "</div>";
+    }
+
+    if (turn.ok) {
+      html += '<div class="turn-reply-text"><span class="label">رد المريض الافتراضي</span>' + escapeHtml(turn.replyText || "") + "</div>";
+    } else {
+      html += '<div class="turn-reply-text" style="border-color:var(--err-border);background:var(--err-bg);color:var(--err-text);">';
+      html += '<span class="label" style="color:var(--err-text);">خطأ</span>' + escapeHtml(turn.errorMessage || "خطأ غير معروف");
+      html += "</div>";
+    }
+
+    card.innerHTML = html;
+
+    if (turn.audioUrl) {
+      const audioEl = document.createElement("audio");
+      audioEl.controls = true;
+      audioEl.src = turn.audioUrl;
+      card.appendChild(audioEl);
+      // Attempt autoplay (this fetch was triggered by a user gesture chain,
+      // so most browsers will allow it); silently ignore if blocked -- the
+      // controls above still let the tester play it manually.
+      audioEl.play().catch(() => {});
+    }
+
+    const details = document.createElement("details");
+    details.className = "raw-block";
+    const summary = document.createElement("summary");
+    summary.textContent = "عرض الطلب/الاستجابة الخام (Raw request/response)";
+    details.appendChild(summary);
+
+    const rawPre = document.createElement("pre");
+    rawPre.className = "mono";
+    const rawPayload = {
+      request: turn.rawRequest,
+      response: turn.rawResponse,
+    };
+    rawPre.textContent = prettyJson(rawPayload);
+    details.appendChild(rawPre);
+
+    card.appendChild(details);
+
+    // Newest turn on top: always insert as the very first child. logEmpty
+    // stays in the DOM (just hidden via display:none above) so its position
+    // doesn't matter.
+    logList.insertBefore(card, logList.firstChild);
+  }
+
+  clearLogBtn.addEventListener("click", () => {
+    Array.from(logList.querySelectorAll(".turn-card")).forEach((el) => {
+      const audioEl = el.querySelector("audio");
+      if (audioEl && audioEl.src) URL.revokeObjectURL(audioEl.src);
+      el.remove();
+    });
+    logEmpty.style.display = "";
+  });
+
+  setMicState("idle");
+})();
+</script>
+
+</body>
+</html>

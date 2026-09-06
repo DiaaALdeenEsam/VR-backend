@@ -32,16 +32,20 @@ from app.config import get_settings
 from app.domain.repositories import (
     AbstractUnitOfWork,
     EvaluationGenerator,
+    EvidenceRetriever,
     PatientReplyGenerator,
     SpeechToTextPort,
     TextToSpeechPort,
 )
+from app.infrastructure.colab_stt_adapter import ColabSTTAdapter
+from app.infrastructure.colab_tts_adapter import ColabTTSAdapter
 from app.infrastructure.db.engine import get_session_factory
 from app.infrastructure.db.repositories.unit_of_work import SqlAlchemyUnitOfWork
-from app.infrastructure.local_tts_adapter import LocalTTSAdapter
-from app.infrastructure.local_whisper_stt_adapter import LocalWhisperSTTAdapter
+from app.infrastructure.legacy.local_tts_adapter import LocalTTSAdapter
+from app.infrastructure.legacy.local_whisper_stt_adapter import LocalWhisperSTTAdapter
 from app.infrastructure.patient_reply import StubPatientReplyGenerator
 from app.infrastructure.qwen_patient_generator import QwenPatientReplyGenerator
+from app.infrastructure.rag_client_adapter import RagClientAdapter
 from app.infrastructure.stub_evaluator import StubEvaluationGenerator
 from app.infrastructure.stub_stt import StubSTTAdapter
 from app.infrastructure.stub_tts import StubTTSAdapter
@@ -102,11 +106,24 @@ def get_patient_reply_generator() -> PatientReplyGenerator:
     return QwenPatientReplyGenerator()
 
 
+def get_evidence_retriever() -> EvidenceRetriever:
+    """Provides the EvidenceRetriever implementation for RAG-backed evidence
+    retrieval. Only one implementation exists today (unlike
+    get_patient_reply_generator/get_speech_to_text_port, there's no
+    Settings-driven backend selector here -- not asked for, and there's no
+    stub to fall back to yet). Cheap to construct: no request is made until
+    retrieve() is actually called.
+    """
+
+    return RagClientAdapter(get_settings())
+
+
 def get_post_message_use_case(
     uow: AbstractUnitOfWork = Depends(get_uow),
     reply_generator: PatientReplyGenerator = Depends(get_patient_reply_generator),
+    evidence_retriever: EvidenceRetriever = Depends(get_evidence_retriever),
 ) -> PostMessageUseCase:
-    return PostMessageUseCase(uow, reply_generator)
+    return PostMessageUseCase(uow, reply_generator, evidence_retriever)
 
 
 def get_order_test_use_case(uow: AbstractUnitOfWork = Depends(get_uow)) -> OrderTestUseCase:
@@ -147,21 +164,34 @@ def get_evaluate_session_use_case(
 
 
 def get_speech_to_text_port() -> SpeechToTextPort:
-    """Picks the SpeechToTextPort implementation via Settings.stt_backend."""
+    """Picks the SpeechToTextPort implementation via Settings.stt_backend.
 
-    backend = get_settings().stt_backend
-    if backend == "stub":
+    "colab" (the default) and "whisper" (deprecated, rollback-only -- see
+    app/infrastructure/legacy/local_whisper_stt_adapter.py) are both cheap to
+    construct: neither loads a model or opens a connection until transcribe()
+    is actually called.
+    """
+
+    settings = get_settings()
+    if settings.stt_backend == "stub":
         return StubSTTAdapter()
-    return LocalWhisperSTTAdapter()
+    if settings.stt_backend == "whisper":
+        return LocalWhisperSTTAdapter()
+    return ColabSTTAdapter(settings)
 
 
 def get_text_to_speech_port() -> TextToSpeechPort:
-    """Picks the TextToSpeechPort implementation via Settings.tts_backend."""
+    """Picks the TextToSpeechPort implementation via Settings.tts_backend.
 
-    backend = get_settings().tts_backend
-    if backend == "stub":
+    Same construction-is-cheap reasoning as get_speech_to_text_port() above.
+    """
+
+    settings = get_settings()
+    if settings.tts_backend == "stub":
         return StubTTSAdapter()
-    return LocalTTSAdapter()
+    if settings.tts_backend == "gtts":
+        return LocalTTSAdapter()
+    return ColabTTSAdapter(settings)
 
 
 def get_tts_content_type(
@@ -169,13 +199,14 @@ def get_tts_content_type(
 ) -> str:
     """MIME type of the bytes TextToSpeechPort.synthesize() returns. Not part
     of the port itself (its interface is audio bytes only). Every adapter
-    (StubTTSAdapter, LocalTTSAdapter) returns WAV -- LocalTTSAdapter
-    re-encodes gTTS's native MP3 output to WAV itself (see its module
-    docstring) specifically so this stays a single constant instead of
-    branching on which concrete adapter get_text_to_speech_port returned.
-    Kept as a Depends()-resolved function rather than a bare constant so a
-    future adapter that returns a different format only has to change this
-    one place.
+    (StubTTSAdapter, ColabTTSAdapter, legacy LocalTTSAdapter) returns WAV --
+    LocalTTSAdapter re-encodes gTTS's native MP3 output to WAV itself, and the
+    Colab notebook's /tts endpoint is written to return WAV directly (see
+    each adapter's module docstring) -- specifically so this stays a single
+    constant instead of branching on which concrete adapter
+    get_text_to_speech_port returned. Kept as a Depends()-resolved function
+    rather than a bare constant so a future adapter that returns a different
+    format only has to change this one place.
     """
 
     del text_to_speech  # unused now that every adapter returns the same format; kept for signature stability

@@ -1,0 +1,74 @@
+{
+  "disease_name": "الذبحة الصدرية المستقرة (Stable Angina)",
+  "source": "Not specified in text (source app.db, table 'scenarios', id=3; management table references 'Box 17.28' but does not name the underlying textbook)",
+  "chapter": "Not specified in text",
+  "pages": "Not specified in text",
+  "extraction_notes": "Generated from a VR clinical-simulation case (not a textbook excerpt): app.db -> scenarios table, row id=3, fields 'case_text' and 'gold_standard'. The case is written as a training scenario (patient profile, exam stations, investigations, management table, scoring/'fatal mistake' criteria) rather than a disease-reference article, so several of the 12 fields had no directly-labeled source text and were assembled by grouping clinically-equivalent statements from across the case (e.g. 'complications' was inferred from the scenario's 'Fatal Mistake' consequence description, which is the only place the disease's natural complication is stated). No content was invented beyond what appears in case_text/gold_standard. Bilingual Arabic/English terms are kept as they appear in the source.",
+  "missing_fields": [
+    "source",
+    "chapter",
+    "pages",
+    "1_pathophysiology",
+    "7_diagnostic_criteria"
+  ],
+  "1_pathophysiology": "Not specified in text",
+  "2_risk_factors": [
+    "التدخين (سابق أو حالي) - Smoking history (investigated in focused history)",
+    "القصة العائلية لأمراض الشرايين التاجية - Family history of CAD",
+    "الإجهاد المهني/النفسي - Occupational/psychological stress (patient under pressure at work recently)",
+    "عوامل المتلازمة الاستقلابية (يُقيَّم عبر محيط الخصر ومؤشر كتلة الجسم) - Metabolic syndrome risk factors, assessed via waist circumference and BMI",
+    "ارتفاع ضغط الدم غير المنضبط (يُنفى بالفحص) - Uncontrolled hypertension (checked to exclude as contributing factor)",
+    "العمر 64 سنة والجنس ذكر - Age 64, male"
+  ],
+  "3_symptoms_and_signs": [
+    "نوبات متكررة من ألم عاصر خلف القص (Episodes of retrosternal crushing pain)",
+    "الألم ينتشر إلى الذراع الأيسر (Radiating to the left arm)",
+    "الألم يُحدث حصريًا بالمجهود البدني ويزول تلقائيًا خلال 2-5 دقائق من الراحة (Induced by exertion, resolves spontaneously within 2-5 minutes of rest)",
+    "المريض خالٍ من الألم وقت المقابلة (Pain-free at rest during interview)",
+    "قلق خفيف (Slightly anxious)",
+    "فحوصات سلبية مطلوبة لنفي تضيق الأبهر: عدم وجود نبض سباتي بطيء الصعود، وعدم وجود نفخة انقباضية قذفية تشع للعنق (absence of slow-rising carotid pulse and ejection systolic murmur radiating to the neck, checked to exclude aortic stenosis)"
+  ],
+  "4_laboratory_investigations": [
+    "تعداد دم كامل (FBC) - لنفي فقر الدم",
+    "وظائف الكلى ومعدل الرشح الكبيبي (eGFR)",
+    "غلوكوز الدم الصيامي والـ HbA1c",
+    "بروفايل الدهون الكامل (Lipid profile)",
+    "وظائف الغدة الدرقية - لاستبعاد التسمم الدرقي (Thyroid function, to exclude thyrotoxicosis)"
+  ],
+  "5_radiological_investigations": [
+    "تخطيط القلب الكهربائي ذو 12 مسرى في الراحة (Resting 12-lead ECG) - طبيعي بالكامل في هذه الحالة [note: an electrophysiological, not strictly radiological, test - see extraction notes]",
+    "تصوير مقطعي محوسب للشرايين التاجية (CTCA) - كخط أول لتحديد التضيق والتكلس التشريحي",
+    "تخطيط صدى القلب (Echocardiography) - لتقييم الصمامات، الكسر القذفي (LVEF)، وغياب اضطرابات الحركة الجدارية في الراحة"
+  ],
+  "6_differential_diagnosis": [
+    "تضيق الصمام الأبهري (Aortic stenosis) - يُنفى بفحص النبض السباتي والإصغاء القلبي"
+  ],
+  "7_diagnostic_criteria": "Not specified in text (no named formal criteria/classification system, e.g. CCS grading, appears in the source; only the classic clinical pattern is described: exertional retrosternal crushing pain radiating to the left arm, relieved within 2-5 minutes of rest, with a normal resting ECG)",
+  "8_complications": [
+    "زعزعة واستقرار اللويحة العصيدية (Plaque destabilisation) وتطورها نحو التمزق والخثار - Complication of inadequate treatment (missing aspirin/high-dose statin or failing to reach LDL target), leading to acute coronary syndrome or fatal myocardial infarction (Fatal MI), per the scenario's 'Fatal Mistake' section"
+  ],
+  "9_prevention": [
+    "أسبرين (Aspirin) 75-100 ملغ يوميًا مدى الحياة كوقاية من التخثر",
+    "كلوبيدوغريل (Clopidogrel) 75 ملغ يوميًا كبديل عند حساسية موثقة للأسبرين",
+    "ستاتينات عالية الكثافة (Atorvastatin 40-80 ملغ يوميًا) لخفض LDL بأكثر من 50% من خط الأساس والوصول لمستوى مطلق أقل من 1.4 ملمول/لتر",
+    "تناول أكثر من 200 غرام من الفاكهة والخضار يوميًا",
+    "المنع الصارم للأطعمة فائقة المعالجة والسكريات المكررة والدهون المشبعة والمتحولة"
+  ],
+  "10_non_pharmacological_treatment": [
+    "التوجيه بتناول أكثر من 200 غرام من الفاكهة والخضار يوميًا",
+    "المنع القطعي للأطعمة فائقة المعالجة (Ultra-processed foods)، والسكريات المكررة، والدهون المشبعة والمتحولة",
+    "تنظيم التثقيف النفسي لتقليل توتر العمل المكتبي (Psychological education to reduce work-related stress)"
+  ],
+  "11_pharmacological_treatment": [
+    "العلاج العرضي الفوري: ثلاثي نترات الغليسيريل تحت اللسان (Sublingual GTN) 0.3-1.0 ملغ عند بدء نوبة الألم، تُكرر بعد 5 دقائق إذا لم يزل الألم",
+    "العلاج الوقائي (الخط الأول): حاصرات بيتا فمويًا مثل بيسوبرولول (Bisoprolol) لاستهداف معدل نبض في الراحة 55-60 ضربة/دقيقة",
+    "بديل عند وجود موانع استعمال لحاصرات بيتا: حاصرات قنوات الكالسيوم (CCBs) مثل ديلتيازيم (Diltiazem)",
+    "أسبرين (Aspirin) 75-100 ملغ يوميًا فمويًا مدى الحياة (مثبط COX-1)",
+    "بديل عند حساسية للأسبرين: كلوبيدوغريل (Clopidogrel) 75 ملغ يوميًا",
+    "ستاتينات عالية الكثافة: أتورفاستاتين (Atorvastatin) 40-80 ملغ يوميًا فمويًا، بهدف خفض LDL بأكثر من 50% والوصول لمستوى أقل من 1.4 ملمول/لتر"
+  ],
+  "12_interventional_treatment": [
+    "قسطرة تداخلية لرأب الوعاء وتثبيت دعامات مغلفة بالدواء (PCI with Drug-eluting stents - DES) إذا ظلت الأعراض معاندة رغم العلاج الطبي الأمثل (Optimal Medical Therapy - OMT)",
+    "مناقشة الجراحة (CABG) عند إصابة الجذع الأيسر أو تضيق متعدد معقد (بحسب SYNTAX score) وبقرار الـ Heart Team"
+  ]
+}

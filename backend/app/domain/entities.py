@@ -65,11 +65,24 @@ class Session:
 
 @dataclass
 class Message:
+    """`status` distinguishes an immediately-available reply (still true for
+    the "stub" PatientReplyGenerator test double -- see
+    app/infrastructure/patient_reply.py) from one generated asynchronously in
+    the background by the real (RAG-API-backed) production backend, 6-48s per
+    call -- see PostMessageAsyncUseCase in
+    app/application/use_cases/post_message_async.py. "pending"/"generating"
+    rows are placeholders whose `content` gets overwritten in place once
+    generation finishes (or fails, landing on "failed" with fallback text).
+    Every message created by the synchronous path is "complete" immediately,
+    same as before this field existed.
+    """
+
     session_id: str
     role: str
     content: str
     created_at: datetime
     id: int | None = None
+    status: str = "complete"
 
 
 @dataclass
@@ -112,11 +125,21 @@ class Evidence:
     score -- lower means a better match. Do not treat it as a probability or
     invert it into one.
 
-    This is raw retrieval output. It must never be handed to a
-    PatientReplyGenerator's prompt unfiltered -- see
-    app/infrastructure/qwen_patient_generator.py's curation step, which is
-    the boundary that keeps this from leaking diagnostic content to the
-    simulated patient.
+    This is raw retrieval output. A PatientReplyGenerator that does fold this
+    into a prompt must curate it first (filter to patient-safe content types,
+    cap length) rather than pass it through unfiltered, to avoid leaking
+    diagnostic content to the simulated patient -- a local Qwen-backed
+    implementation used to do exactly that (removed after it proved
+    unreliable at holding character regardless). The current sole
+    implementation, RagPatientReplyGenerator
+    (app/infrastructure/rag_patient_generator.py), sidesteps the question
+    entirely: it ignores this parameter, since the RAG API's own patient
+    route does its own internal retrieval already scoped to patient-safe
+    content. PostMessageUseCase/PostMessageAsyncUseCase still retrieve this
+    (via EvidenceRetriever) and pass it to generate_reply() regardless -- it's
+    currently unused output on the only path that consumes it, worth knowing
+    before adding a second PatientReplyGenerator implementation that *does*
+    read it.
     """
 
     id: str

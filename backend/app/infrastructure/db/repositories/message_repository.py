@@ -15,6 +15,7 @@ def _to_entity(row: MessageModel) -> Message:
         role=row.role,
         content=row.content,
         created_at=row.created_at,
+        status=row.status,
     )
 
 
@@ -28,6 +29,7 @@ class SqlMessageRepository(MessageRepository):
             role=message.role,
             content=message.content,
             created_at=message.created_at,
+            status=message.status,
         )
         self._session.add(row)
         await self._session.flush()
@@ -38,3 +40,13 @@ class SqlMessageRepository(MessageRepository):
             select(MessageModel).where(MessageModel.session_id == session_id).order_by(MessageModel.id)
         )
         return [_to_entity(row) for row in result.all()]
+
+    async def update_content(self, message_id: int, content: str, status: str) -> Message:
+        row = await self._session.get(MessageModel, message_id)
+        if row is None:
+            raise ValueError(f"message {message_id!r} does not exist")
+        row.content = content
+        row.status = status
+        self._session.add(row)
+        await self._session.flush()
+        return _to_entity(row)

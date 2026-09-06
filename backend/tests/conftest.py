@@ -15,11 +15,17 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.api.deps import (
     get_db_session,
+    get_evidence_retriever,
     get_patient_reply_generator,
+    get_post_message_use_case,
+    get_process_voice_chat_use_case,
     get_speech_to_text_port,
     get_text_to_speech_port,
     get_uow,
+    get_uow_factory,
 )
+from app.application.use_cases.post_message import PostMessageUseCase
+from app.application.use_cases.process_voice_chat import ProcessVoiceChatUseCase
 from app.infrastructure.db.repositories.unit_of_work import SqlAlchemyUnitOfWork
 from app.infrastructure.patient_reply import StubPatientReplyGenerator
 from app.infrastructure.stub_stt import StubSTTAdapter
@@ -73,17 +79,44 @@ async def app(session_factory: async_sessionmaker[AsyncSession]):
     def override_get_uow() -> SqlAlchemyUnitOfWork:
         return SqlAlchemyUnitOfWork(session_factory)
 
+    def override_get_uow_factory():
+        # Same closure as override_get_uow above, but returned as a callable
+        # rather than a single instance -- see get_uow_factory's own
+        # docstring for why PostMessageAsyncUseCase needs this shape (more
+        # than one independent transaction across a request's lifetime,
+        # including from a background task that outlives the request).
+        return lambda: SqlAlchemyUnitOfWork(session_factory)
+
     fastapi_app.dependency_overrides[get_db_session] = override_get_db_session
     fastapi_app.dependency_overrides[get_uow] = override_get_uow
+    fastapi_app.dependency_overrides[get_uow_factory] = override_get_uow_factory
 
-    # The default app config wires the real (Qwen) patient-reply generator (see
-    # app/api/deps.py::get_patient_reply_generator), but this general-purpose
-    # `app`/`client` fixture pair is used by the broad session/DB-flow tests,
-    # which care about persistence mechanics, not model output -- so keep them
-    # fast and deterministic with the stub here. tests/test_qwen_patient_generator.py
-    # overrides this same dependency back to the real generator for the tests
-    # that specifically exercise it.
+    # The production default (app/api/deps.py::get_patient_reply_generator) is
+    # the RAG API -- the only PatientReplyGenerator that exists (a local Qwen
+    # model used to be a selectable alternative; removed after it proved
+    # unreliable at holding character). This general-purpose `app`/`client`
+    # fixture pair is used by the broad session/DB-flow tests, which care
+    # about persistence mechanics, not model output -- so keep them fast and
+    # deterministic with the stub here.
     fastapi_app.dependency_overrides[get_patient_reply_generator] = lambda: StubPatientReplyGenerator()
+
+    # Production (app/api/deps.py::get_post_message_use_case) always builds
+    # PostMessageAsyncUseCase now -- the sole PatientReplyGenerator is
+    # 6-48s-per-call shaped, so there's no fast synchronous backend left to
+    # make the old "ack immediately in this same response" behavior the
+    # default. This general-purpose fixture pair overrides the use case
+    # itself (not just the generator above) back to the synchronous
+    # PostMessageUseCase, wired with the stub generator, so every test that
+    # asserts an immediate, non-empty reply in the same POST response (most
+    # of this suite) keeps working unchanged. tests/test_post_message_async.py
+    # overrides this dependency back to the real async construction for the
+    # tests that specifically exercise that orchestration layer.
+    def override_post_message_use_case() -> PostMessageUseCase:
+        return PostMessageUseCase(
+            SqlAlchemyUnitOfWork(session_factory), StubPatientReplyGenerator(), get_evidence_retriever()
+        )
+
+    fastapi_app.dependency_overrides[get_post_message_use_case] = override_post_message_use_case
 
     # Same reasoning as get_patient_reply_generator above, extended to the voice
     # pipeline: Settings defaults to the real (whisper/gtts) backends, but this
@@ -92,6 +125,13 @@ async def app(session_factory: async_sessionmaker[AsyncSession]):
     # tests that specifically exercise them.
     fastapi_app.dependency_overrides[get_speech_to_text_port] = lambda: StubSTTAdapter()
     fastapi_app.dependency_overrides[get_text_to_speech_port] = lambda: StubTTSAdapter()
+
+    # Same reasoning as override_post_message_use_case above, for
+    # POST /sessions/{id}/chat-voice and WS /ws/voice.
+    def override_process_voice_chat_use_case() -> ProcessVoiceChatUseCase:
+        return ProcessVoiceChatUseCase(StubSTTAdapter(), override_post_message_use_case(), StubTTSAdapter())
+
+    fastapi_app.dependency_overrides[get_process_voice_chat_use_case] = override_process_voice_chat_use_case
 
     yield fastapi_app
 

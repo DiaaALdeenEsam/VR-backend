@@ -158,25 +158,55 @@ async def _seed_one_scenario() -> int:
 
 
 def _prepare_ws_test_app(tmp_path: Path, monkeypatch, db_name: str):
-    """Points DATABASE_URL/*_BACKEND at a fresh temp-file DB + stub backends,
-    runs migrations and seeds one scenario, then returns (app, scenario_id).
-    Callers must call get_settings.cache_clear() again after the test.
+    """Points DATABASE_URL/STT_BACKEND/TTS_BACKEND at a fresh temp-file DB +
+    stub backends, runs migrations and seeds one scenario, then returns
+    (app, scenario_id). Callers must call get_settings.cache_clear() again
+    after the test.
+
+    No PATIENT_REPLY_BACKEND env var (removed along with the local Qwen
+    backend it used to select -- the RAG API is the only PatientReplyGenerator
+    now, and it isn't offline-friendly for this test). Instead, this
+    overrides get_process_voice_chat_use_case directly on the returned app --
+    same trick tests/conftest.py's shared `app` fixture uses -- to the
+    synchronous ProcessVoiceChatUseCase wired with every stub port, so this
+    test stays fast/deterministic/offline like it always was.
     """
 
+    from app.api.deps import get_process_voice_chat_use_case
+    from app.application.use_cases.post_message import PostMessageUseCase
+    from app.application.use_cases.process_voice_chat import ProcessVoiceChatUseCase
     from app.config import get_settings
+    from app.domain.entities import Evidence
+    from app.domain.repositories import EvidenceRetriever
+    from app.infrastructure.patient_reply import StubPatientReplyGenerator
     from app.main import create_app
 
     db_path = tmp_path / db_name
     monkeypatch.setenv("DATABASE_URL", f"sqlite+aiosqlite:///{db_path}")
     monkeypatch.setenv("STT_BACKEND", "stub")
     monkeypatch.setenv("TTS_BACKEND", "stub")
-    monkeypatch.setenv("PATIENT_REPLY_BACKEND", "stub")
     get_settings.cache_clear()
 
     _run_migrations()
     scenario_id = asyncio.run(_seed_one_scenario())
 
-    return create_app(), scenario_id
+    fastapi_app = create_app()
+
+    class _NoOpEvidenceRetriever(EvidenceRetriever):
+        async def retrieve(
+            self, query: str, top_k: int = 5, content_types: list[str] | None = None
+        ) -> list[Evidence]:
+            return []
+
+    def override_process_voice_chat_use_case() -> ProcessVoiceChatUseCase:
+        from app.api.deps import get_uow
+
+        post_message_use_case = PostMessageUseCase(get_uow(), StubPatientReplyGenerator(), _NoOpEvidenceRetriever())
+        return ProcessVoiceChatUseCase(StubSTTAdapter(), post_message_use_case, StubTTSAdapter())
+
+    fastapi_app.dependency_overrides[get_process_voice_chat_use_case] = override_process_voice_chat_use_case
+
+    return fastapi_app, scenario_id
 
 
 def test_voice_websocket_round_trip(tmp_path, monkeypatch) -> None:

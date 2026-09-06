@@ -309,6 +309,22 @@ class ScenarioModel(SQLModel, table=True):
             "ScenarioPatientProfileModel", back_populates="scenario", uselist=False, cascade="all, delete-orphan"
         )
     )
+    # Not one of the 12 template sections either -- per-scenario overrides of
+    # the shared tests.result value (see migration 0004 and OrderTestUseCase
+    # in app/application/use_cases/order_test.py). 1:N like the section list
+    # tables above, but the "many" side (ScenarioTestResultModel) points at
+    # TestModel too, not just at ScenarioModel -- it's a join row between the
+    # scenario and the global test catalog, not a normalized piece of this
+    # scenario's own clinical narrative.
+    test_results: list[ScenarioTestResultModel] = Relationship(
+        sa_relationship=relationship(
+            "ScenarioTestResultModel",
+            back_populates="scenario",
+            uselist=True,
+            collection_class=list,
+            cascade="all, delete-orphan",
+        )
+    )
 
 
 # --- Scenario clinical-section child tables ---------------------------------
@@ -649,6 +665,37 @@ class ScenarioPatientProfileModel(SQLModel, table=True):
     scenario: ScenarioModel = Relationship(back_populates="patient_profile")
 
 
+class ScenarioTestResultModel(SQLModel, table=True):
+    """A scenario-specific override of tests.result (migration 0004).
+
+    The global test catalog (TestCategoryModel/TestModel, defined above) is
+    shared across every scenario -- the same "Abdominal ultrasound" row is
+    orderable regardless of which case is active, which is clinically
+    correct (the same test exists everywhere). What differs per case is the
+    *finding* it returns. This table holds that per-(scenario, test) finding;
+    OrderTestUseCase (app/application/use_cases/order_test.py) looks here
+    first and falls back to the generic TestModel.result -- logging a warning
+    when it does, since a scenario missing an override for a test it plausibly
+    needs is a data gap worth noticing in dev/test output, not a silent one.
+
+    Unlike every table in the "Scenario clinical-section child tables"
+    section below, this is not a normalized piece of this scenario's own
+    narrative -- it's a join row between a scenario and the pre-existing,
+    scenario-independent test catalog, so it relates to TestModel too, not
+    only to ScenarioModel.
+    """
+
+    __tablename__ = "scenario_test_results"
+
+    id: int | None = Field(default=None, primary_key=True)
+    scenario_id: int = Field(foreign_key="scenarios.id", ondelete="CASCADE", index=True)
+    test_id: int = Field(foreign_key="tests.id", index=True)
+    result: str
+
+    scenario: ScenarioModel = Relationship(back_populates="test_results")
+    test: TestModel = Relationship(sa_relationship=relationship("TestModel"))
+
+
 class QuestionModel(SQLModel, table=True):
     __tablename__ = "questions"
 
@@ -681,6 +728,13 @@ class SessionModel(SQLModel, table=True):
 
 
 class MessageModel(SQLModel, table=True):
+    """`status` (migration 0005) is 'complete' for every message the
+    synchronous PatientReplyGenerator backends create; 'pending'/'generating'/
+    'failed' only ever appear on assistant rows created by the async
+    reply-generation path (see PostMessageAsyncUseCase). The CHECK constraint
+    backing this (ck_messages_status) lives in the migration, mirroring
+    ck_messages_role."""
+
     __tablename__ = "messages"
 
     id: int | None = Field(default=None, primary_key=True)
@@ -688,6 +742,7 @@ class MessageModel(SQLModel, table=True):
     role: str
     content: str
     created_at: datetime
+    status: str = "complete"
 
 
 class OrderedTestModel(SQLModel, table=True):

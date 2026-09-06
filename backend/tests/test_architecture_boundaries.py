@@ -41,7 +41,6 @@ FORBIDDEN_TOP_LEVEL_IMPORTS = {
 # LOCAL_ML_ADAPTER_MODULES below checks instead is that these modules stay in
 # app/infrastructure/ and never reach sideways into the web framework or ORM.
 LOCAL_ML_ADAPTER_MODULES = [
-    "infrastructure/qwen_patient_generator.py",
     "infrastructure/colab_stt_adapter.py",
     "infrastructure/colab_tts_adapter.py",
     "infrastructure/legacy/local_whisper_stt_adapter.py",

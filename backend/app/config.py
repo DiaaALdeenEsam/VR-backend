@@ -14,11 +14,65 @@ class Settings(BaseSettings):
     db_echo: bool = False
     cors_origins: list[str] = ["*"]
 
-    # Which PatientReplyGenerator implementation app/api/deps.py wires up.
-    # "qwen"  -- app/infrastructure/qwen_patient_generator.py (local Qwen2.5-0.5B-Instruct,
-    #            CPU-friendly; falls back to a placeholder reply if the model can't be loaded/run).
-    # "stub"  -- app/infrastructure/patient_reply.py (fixed echo, no ML dependency at all).
-    patient_reply_backend: Literal["qwen", "stub"] = "qwen"
+    # --- Patient-reply settings ---------------------------------------------
+    #
+    # app/api/deps.py's get_patient_reply_generator() has exactly one
+    # implementation: app/infrastructure/rag_patient_generator.py (external
+    # RAG patient-chat API, POST /v1/rag/patient/chat). There used to be a
+    # Settings.patient_reply_backend toggle here selecting between this, a
+    # local Qwen2.5-0.5B-Instruct model, and a fixed-echo stub -- removed
+    # (not narrowed to a single-member Literal) once live reproduction
+    # confirmed Qwen hallucinates/breaks character systematically and the RAG
+    # API's anti-leak boundary was separately verified to hold cleanly. There
+    # is no other backend to configure, so there is nothing left to make a
+    # setting out of -- a Literal with one member and a matching default
+    # would be pure ceremony, since nothing would ever branch on it again.
+    # (StubPatientReplyGenerator, app/infrastructure/patient_reply.py, still
+    # exists and is still used -- but only via tests/conftest.py's direct
+    # dependency_overrides, never selected through this file.)
+    #
+    # The settings below configure that one implementation. They reuse
+    # rag_api_base_url / rag_api_key / rag_api_timeout_connect_seconds /
+    # rag_api_max_attempts / rag_api_retry_backoff_seconds above -- POST
+    # /v1/rag/patient/chat is the same external service, same base URL and
+    # key, as POST /v1/rag/query (app/infrastructure/rag_client_adapter.py).
+
+    # Persona sent on every patient-chat call (see docs/backend-rag-handoff.md's
+    # "eight runtime personas" -- default is that route's own default). Fixed
+    # per-deployment rather than per-request: the domain's PatientReplyGenerator
+    # port has no concept of "persona" (see RagPatientReplyGenerator's module
+    # docstring for why that's fine).
+    rag_patient_persona: str = "middle_man"
+
+    # Read timeout for a single patient-chat call. Set from real measurement,
+    # not the handoff doc's generic guidance (150s) -- live-tested latency
+    # against the real API ranged 6-48s across single-turn calls; 60s gives
+    # headroom above the observed worst case without matching the use case's
+    # own hard timeout below exactly (so a slow-but-still-alive HTTP response
+    # isn't racing byte-for-byte against the orchestration timeout that also
+    # has to account for scheduling/DB overhead around the call itself).
+    rag_patient_read_timeout_seconds: float = 60.0
+
+    # PostMessageAsyncUseCase's own hard deadline for the whole generate_reply()
+    # call (adapter-internal retries included). Slightly above
+    # rag_patient_read_timeout_seconds for the same reason noted there.
+    rag_patient_hard_timeout_seconds: float = 65.0
+
+    # How long to wait before pushing an interim "still thinking" filler event
+    # over the session's WS channel, if the real reply isn't ready yet. Picked
+    # from the observed latency distribution: roughly half of live-tested calls
+    # finished faster than this, so most turns never see the filler at all;
+    # the rest get an early acknowledgement instead of dead air.
+    rag_patient_filler_after_seconds: float = 15.0
+
+    # Fixed, in-character line pushed (a) as the filler at
+    # rag_patient_filler_after_seconds if the real reply still isn't ready, and
+    # (b) as the final assistant message content if generation ultimately
+    # times out or fails -- see PostMessageAsyncUseCase. Deliberately generic
+    # (never claims specific symptoms, never breaks character) since it has to
+    # make sense standing alone regardless of which scenario or turn it lands
+    # on.
+    rag_patient_fallback_reply: str = "آسف، هل يمكنك إعادة السؤال؟ شردت شوي."
 
     # Which EvaluationGenerator implementation app/api/deps.py wires up for
     # POST /sessions/{id}/evaluate. Only "stub" exists today (see

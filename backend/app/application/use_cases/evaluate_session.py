@@ -16,6 +16,13 @@ class EvaluateSessionUseCase:
     `.sessions` and `.scenarios`, among others) plus the EvaluationGenerator
     port, the same (uow, port) shape as PostMessageUseCase. Read-only, so it
     never calls `uow.commit()`.
+
+    Gathers four kinds of signal for the EvaluationGenerator port to weigh:
+    the chat transcript, which tests were ordered (against which tests the
+    scenario actually considers relevant), and quiz answers (against how many
+    questions the scenario has in total, not just how many were attempted) --
+    see EvaluationGenerator.evaluate()'s docstring in app/domain/repositories.py
+    for the exact shape of each.
     """
 
     def __init__(self, uow: AbstractUnitOfWork, evaluation_generator: EvaluationGenerator) -> None:
@@ -38,8 +45,36 @@ class EvaluateSessionUseCase:
             messages = await self._uow.messages.list_by_session(session_id)
             message_dicts = [{"role": m.role, "content": m.content} for m in messages]
 
+            ordered_tests = await self._uow.ordered_tests.list_by_session(session_id)
+            ordered_test_dicts = [{"test_id": ot.test_id} for ot in ordered_tests]
+
+            answers = await self._uow.answers.list_by_session(session_id)
+            answer_dicts = [
+                {"question_id": a.question_id, "choice_id": a.choice_id, "is_correct": a.is_correct}
+                for a in answers
+            ]
+
+            # What this scenario's own data says is relevant (see
+            # ScenarioTestResultModel, migration 0004) -- what ordered_tests
+            # is judged against, not what's merely orderable.
+            relevant_tests = await self._uow.tests.list_scenario_relevant(session.scenario_id)
+            relevant_test_ids = [t.id for t in relevant_tests]
+
+            # Total, not just attempted: len(uow.questions.list_by_scenario(...))
+            # rather than a dedicated count_by_scenario() -- QuestionRepository
+            # already has to load full Question entities (with choices) for
+            # GET /scenarios/{id}/questions, so a second method that only
+            # returns a count would be redundant surface for what's already a
+            # cheap, small, per-scenario list in this project's data.
+            questions = await self._uow.questions.list_by_scenario(session.scenario_id)
+            total_questions = len(questions)
+
             return await self._evaluation_generator.evaluate(
                 case_text=scenario.case_text,
                 gold_standard=scenario.gold_standard,
                 messages=message_dicts,
+                ordered_tests=ordered_test_dicts,
+                answers=answer_dicts,
+                relevant_test_ids=relevant_test_ids,
+                total_questions=total_questions,
             )

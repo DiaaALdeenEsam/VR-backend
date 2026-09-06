@@ -58,6 +58,23 @@ class VoiceServiceUnavailableError(DomainError):
         super().__init__(f"{service} is unavailable: {reason}")
 
 
+class SessionBusyError(DomainError):
+    """Raised when a doctor sends a new message while a previous reply for
+    the same session is still being generated in the background (see
+    PostMessageAsyncUseCase). Chosen over silently queueing or cancelling
+    the in-flight call -- see that use case's module docstring for why.
+
+    Given its own registered handler in app/api/error_handlers.py, mapping
+    to 409 Conflict: distinct from the generic DomainError -> 400 mapping,
+    since "the request is fine, but the session isn't ready for it yet" is a
+    conflict with current state, not a malformed request.
+    """
+
+    def __init__(self, session_id: Any) -> None:
+        self.session_id = session_id
+        super().__init__(f"session {session_id!r} already has a reply being generated")
+
+
 class RagServiceUnavailableError(DomainError):
     """Raised when the RAG API (app/infrastructure/rag_client_adapter.py) can't
     be reached or fails -- not configured, connection refused/timed out, or an

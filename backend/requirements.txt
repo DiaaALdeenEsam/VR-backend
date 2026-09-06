@@ -8,15 +8,6 @@ aiosqlite==0.20.0
 alembic==1.13.3
 python-dotenv==1.0.1
 
-# CPU-only wheels for the local Qwen patient-reply generator (app/infrastructure/qwen_patient_generator.py).
-# A 0.5B model doesn't need a GPU, and CPU wheels avoid CUDA/driver version matching -- more
-# portable for a dev/test-only component. Drop this line (and torch's `+cpu` pin below) if you'd
-# rather use a CUDA build on a machine where that's already set up.
---extra-index-url https://download.pytorch.org/whl/cpu
-torch==2.5.1
-transformers==4.46.3
-accelerate==1.0.1
-
 python-multipart==0.0.12  # required by FastAPI for UploadFile / multipart form parsing (voice endpoints)
 
 # Colab-hosted voice pipeline (app/infrastructure/colab_stt_adapter.py, colab_tts_adapter.py) --

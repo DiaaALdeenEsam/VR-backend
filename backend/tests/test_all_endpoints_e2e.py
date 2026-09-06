@@ -7,10 +7,11 @@ also exercises the real seed script and the real seed_data content, not a
 separate hand-rolled fixture. If seed_data/*.json ever goes stale or breaks
 the loader, this suite catches it.
 
-Patient replies here come from the stub generator (see tests/conftest.py's
-`app` fixture, which overrides get_patient_reply_generator for all tests in
-this suite) -- fast and deterministic. tests/test_qwen_patient_generator.py
-is where the real Qwen model gets exercised.
+Patient replies here come from the stub generator via the synchronous
+PostMessageUseCase (see tests/conftest.py's `app` fixture, which overrides
+get_patient_reply_generator and get_post_message_use_case for all tests in
+this suite) -- fast and deterministic. The real RAG-API-backed async path is
+tests/test_post_message_async.py's job.
 """
 
 from __future__ import annotations

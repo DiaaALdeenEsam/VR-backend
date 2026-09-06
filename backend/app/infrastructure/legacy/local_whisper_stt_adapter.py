@@ -15,13 +15,13 @@ call happens per transcription request. Decoding arbitrary audio containers
 the `av` package, which bundles its own ffmpeg libraries in the wheel.
 
 Language is forced to Arabic (language="ar") rather than auto-detected,
-matching this project's Arabic-only domain (same choice qwen_patient_generator.py
-makes for the chat side) and skipping the extra language-ID pass for speed.
+matching this project's Arabic-only domain, and skipping the extra
+language-ID pass for speed.
 
-Failure handling mirrors qwen_patient_generator.py: nothing here ever raises
-out to the use case. If the model can't be loaded (no network on first run,
-out of memory, faster-whisper/deps missing, ...) or a transcription attempt
-fails, this falls back to StubSTTAdapter instead.
+Failure handling: nothing here ever raises out to the use case. If the model
+can't be loaded (no network on first run, out of memory, faster-whisper/deps
+missing, ...) or a transcription attempt fails, this falls back to
+StubSTTAdapter instead.
 """
 
 from __future__ import annotations

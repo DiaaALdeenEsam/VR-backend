@@ -50,7 +50,13 @@ async def get_session_review(
         scenario_id=review.session.scenario_id,
         created_at=review.session.created_at,
         messages=[
-            MessageRead(id=m.id, role=m.role, content=m.content, created_at=m.created_at)  # type: ignore[arg-type]
+            MessageRead(
+                id=m.id,  # type: ignore[arg-type]
+                role=m.role,
+                content=m.content,
+                created_at=m.created_at,
+                status=m.status,
+            )
             for m in review.messages
         ],
         ordered_tests=[

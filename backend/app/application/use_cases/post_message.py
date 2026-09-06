@@ -9,6 +9,20 @@ from app.domain.repositories import AbstractUnitOfWork, EvidenceRetriever, Patie
 logger = logging.getLogger(__name__)
 
 
+async def retrieve_evidence_or_empty(evidence_retriever: EvidenceRetriever, content: str) -> list[Evidence]:
+    """Shared best-effort RAG lookup: a RagServiceUnavailableError degrades to
+    no evidence rather than failing the caller. Extracted here (rather than a
+    private method) so PostMessageAsyncUseCase can reuse the exact same
+    policy without duplicating it -- same precedent as ProcessVoiceChatUseCase
+    importing PostMessageUseCase from this module."""
+
+    try:
+        return await evidence_retriever.retrieve(query=content)
+    except RagServiceUnavailableError as exc:
+        logger.warning("RAG evidence retrieval failed, proceeding with no evidence: %s", exc)
+        return []
+
+
 class PostMessageUseCase:
     """Persists a doctor's chat message and the simulated patient's reply.
 
@@ -37,13 +51,6 @@ class PostMessageUseCase:
         self._reply_generator = reply_generator
         self._evidence_retriever = evidence_retriever
 
-    async def _retrieve_evidence(self, content: str) -> list[Evidence]:
-        try:
-            return await self._evidence_retriever.retrieve(query=content)
-        except RagServiceUnavailableError as exc:
-            logger.warning("RAG evidence retrieval failed, proceeding with no evidence: %s", exc)
-            return []
-
     async def execute(self, session_id: str, content: str) -> Message:
         async with self._uow:
             session = await self._uow.sessions.get(session_id)
@@ -61,7 +68,7 @@ class PostMessageUseCase:
             )
             await self._uow.messages.add(user_message)
 
-            evidence = await self._retrieve_evidence(content)
+            evidence = await retrieve_evidence_or_empty(self._evidence_retriever, content)
             reply_text = await self._reply_generator.generate_reply(scenario, history, content, evidence)
 
             assistant_message = Message(

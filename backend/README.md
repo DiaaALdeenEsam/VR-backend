@@ -141,7 +141,7 @@ there.)
 |--------|------------------------------------|-----------------------------------------------------|
 | GET    | `/scenarios`                       | id/name only — case_text & gold_standard never leave the server |
 | POST   | `/sessions`                        | `{scenario_id}` → `{session_id}`                    |
-| POST   | `/sessions/{id}/messages`          | `{content}` → patient reply (local Qwen2.5-0.5B by default; see below) |
+| POST   | `/sessions/{id}/messages`          | `{content}` → a "pending" placeholder immediately; the real patient reply is generated in the background and pushed over `WS /ws/voice?session_id=...` (see below) |
 | GET    | `/test-categories`                 |                                                       |
 | GET    | `/test-categories/{id}/tests`      | menu only — no `result` until ordered                |
 | POST   | `/sessions/{id}/tests`             | `{test_id}` → result, recorded as an OrderedTest     |
@@ -154,35 +154,41 @@ there.)
 | WS     | `/ws/voice?session_id=...`         | same pipeline as chat-voice, one utterance per binary frame (see below) |
 | GET    | `/health`                          | checks real DB connectivity, not just process liveness |
 
-## Local patient-reply model (Qwen2.5-0.5B-Instruct)
+## Patient-reply generation (RAG API, async)
 
-`POST /sessions/{id}/messages` is backed by a real, local, small LLM by default
-— `app/infrastructure/qwen_patient_generator.py`, running
-[`Qwen/Qwen2.5-0.5B-Instruct`](https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct)
-via `transformers`, CPU-only (no GPU/CUDA setup required; `requirements.txt`
-pins the CPU wheel of `torch`). It's meant for local dev/testing, not
-production-scale traffic:
+`POST /sessions/{id}/messages` is backed by the external RAG patient-chat API
+— `app/infrastructure/rag_patient_generator.py`, calling
+`POST /v1/rag/patient/chat` (see `docs/backend-rag-handoff.md`). This is the
+only `PatientReplyGenerator`; there is no config toggle for it. A local
+Qwen2.5-0.5B-Instruct model used to be a selectable alternative
+(`PATIENT_REPLY_BACKEND=qwen`) but was removed after live reproduction
+confirmed it hallucinates and breaks character systematically, while the RAG
+API's anti-leak boundary was separately verified to hold cleanly under a
+harder probe.
 
-- The model + tokenizer download (~1GB, cached under
-  `~/.cache/huggingface` by default) and load lazily on first chat message,
-  then stay cached in memory for the life of the process — not reloaded per
-  request.
-- The system prompt keeps it in character as the patient, answering only in
-  Modern Standard Arabic (اللغة العربية الفصحى), briefly, without revealing
-  the diagnosis.
-- If the model/weights can't be loaded or a generation attempt fails for any
-  reason (no network on first run, out of memory, deps missing, ...), it
-  never crashes the request — it falls back to a clearly-labeled placeholder
-  reply instead.
+Latency against the real API runs 6-48s per call, so this backend is served
+through an async ack-then-push flow rather than a blocking response:
 
-Switch backends with the `PATIENT_REPLY_BACKEND` setting (see
-`.env.example`): `qwen` (default) or `stub` (the original fixed-echo
-placeholder, zero ML dependency). The test suite's shared `app`/`client`
-fixtures use `stub` by default so the general test run stays fast and
-deterministic — `tests/test_qwen_patient_generator.py` is the dedicated
-suite that exercises the real model end to end, and skips itself
-automatically (rather than failing) in environments where the ML stack or
-model weights aren't available.
+- `POST /sessions/{id}/messages` persists the doctor's message and an
+  assistant placeholder (`status: "pending"`) and returns immediately
+  (~1-2s), before the real reply exists.
+- The real reply is generated in the background and pushed to
+  `WS /ws/voice?session_id=...` once ready (`{"type": "reply", "status":
+  "complete"|"failed", ...}`), along with an interim `{"type": "thinking",
+  ...}` event if it's still running after ~15s. See
+  `app/application/use_cases/post_message_async.py` for the full design
+  (concurrency policy, timeout/fallback behavior).
+- A second message sent while the first reply is still generating gets
+  `409 Conflict`, not queued or silently dropped.
+
+`StubPatientReplyGenerator` (`app/infrastructure/patient_reply.py`, fixed
+echo, zero ML/network dependency) still exists purely as a test double — the
+general test suite's shared `app`/`client` fixtures override
+`get_post_message_use_case` directly to the synchronous `PostMessageUseCase`
+wired with it, so most of the suite keeps getting an immediate, complete
+reply in the same response without exercising the async orchestration layer.
+`tests/test_post_message_async.py` is the dedicated suite for that layer,
+using a fake controllable-delay generator instead of the real network call.
 
 ## Voice pipeline (STT + TTS)
 
@@ -216,14 +222,13 @@ adapter — a labeled placeholder transcript, or a silent-but-valid WAV clip —
 if the real backend can't load or a request to it fails, so the endpoints
 stay usable even when the ML/network stack isn't fully available.
 
-Switch backends with `STT_BACKEND` (`whisper` default / `stub`) and
-`TTS_BACKEND` (`gtts` default / `stub`) — same pattern as
-`PATIENT_REPLY_BACKEND` above, and the test suite's shared fixtures use
-`stub` for both by default for the same reason. `tests/test_voice.py` covers
-the ports, both REST endpoints, and both WS scenarios (a full round trip and
-the unknown-session error path) against the stub adapters; run it live
-against the real backends the same way you would for Qwen — override the
-env vars, or just hit a running `uvicorn` server directly with `curl`
+Switch backends with `STT_BACKEND` and `TTS_BACKEND` (see `.env.example`) —
+the test suite's shared fixtures use `stub` for both by default for the same
+"keep the general suite fast/deterministic" reason described above.
+`tests/test_voice.py` covers the ports, both REST endpoints, and both WS
+scenarios (a full round trip and the unknown-session error path) against the
+stub adapters; run it live against the real backends by overriding the env
+vars, or just hit a running `uvicorn` server directly with `curl`
 (`-F "file=@clip.wav"`) or the WS client of your choice.
 
 ## Layer boundaries
@@ -251,10 +256,14 @@ request, call a use case via a `Depends()`-injected provider from `api/deps.py`,
 and map the result to a Pydantic response schema in `api/schemas/` — no
 business logic lives here, and domain exceptions are translated to HTTP status
 codes centrally in `api/error_handlers.py` rather than per-route. Net effect:
-you can swap SQLite for Postgres, or the local Qwen patient-reply generator
-for a hosted LLM API, by touching only `app/infrastructure/` (plus one line
-in `api/deps.py::get_patient_reply_generator` to point at the new class) —
-without any change to `app/domain/` or `app/application/`. The `PatientReplyGenerator`/`EvaluationGenerator`/`SpeechToTextPort`/
+you can swap SQLite for Postgres, or the patient-reply generator for a
+different implementation, by touching only `app/infrastructure/` (plus one
+line in `api/deps.py::get_patient_reply_generator` to point at the new
+class) — without any change to `app/domain/` or `app/application/`. This is
+exactly how the local Qwen2.5-0.5B-Instruct generator was swapped for the RAG
+API's patient-chat route (see "Patient-reply generation" above) with zero
+changes to the `PatientReplyGenerator` port or any caller above it. The
+`PatientReplyGenerator`/`EvaluationGenerator`/`SpeechToTextPort`/
 `TextToSpeechPort` ports each have a stub-plus-real implementation pair in
 `app/infrastructure/` already, all following the same shape — a working
 example of exactly that swap, repeated four times.

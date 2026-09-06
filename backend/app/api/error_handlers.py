@@ -13,6 +13,7 @@ from app.domain.exceptions import (
     DomainError,
     InvalidChoiceError,
     NotFoundError,
+    SessionBusyError,
     VoiceServiceUnavailableError,
 )
 
@@ -25,6 +26,10 @@ def register_error_handlers(app: FastAPI) -> None:
     @app.exception_handler(InvalidChoiceError)
     async def _invalid_choice(request: Request, exc: InvalidChoiceError) -> JSONResponse:
         return JSONResponse(status_code=400, content={"detail": str(exc)})
+
+    @app.exception_handler(SessionBusyError)
+    async def _session_busy(request: Request, exc: SessionBusyError) -> JSONResponse:
+        return JSONResponse(status_code=409, content={"detail": str(exc)})
 
     @app.exception_handler(VoiceServiceUnavailableError)
     async def _voice_service_unavailable(request: Request, exc: VoiceServiceUnavailableError) -> JSONResponse:

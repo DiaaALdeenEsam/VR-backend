@@ -75,39 +75,114 @@ class Settings(BaseSettings):
     rag_patient_fallback_reply: str = "آسف، هل يمكنك إعادة السؤال؟ شردت شوي."
 
     # Which EvaluationGenerator implementation app/api/deps.py wires up for
-    # POST /sessions/{id}/evaluate. Only "stub" exists today (see
-    # app/infrastructure/stub_evaluator.py) -- deliberately pluggable so a
-    # real/local LLM-backed evaluator can be added as a new Literal member
-    # later without changing the use case or the API layer.
-    evaluation_backend: Literal["stub"] = "stub"
+    # POST /sessions/{id}/evaluate.
+    # "rag_llm" -- the default. app/infrastructure/rag_llm_evaluator.py, an
+    #              LLM-judge backed by the external RAG API's clinician-chat
+    #              route (POST /v1/rag/chat, same service/base URL/key as
+    #              RAG_API_BASE_URL / RAG_API_KEY below). Runs asynchronously
+    #              via EvaluateSessionAsyncUseCase, same shape as the
+    #              RAG-API-backed patient reply path.
+    # "stub"     -- DEPRECATED escape hatch, kept only until "rag_llm" is
+    #              confirmed working in production; not otherwise selected.
+    #              app/infrastructure/stub_evaluator.py -- deterministic,
+    #              rule-based placeholder grading, no ML/network dependency.
+    #              Do not remove without confirming first (see that module's
+    #              docstring).
+    evaluation_backend: Literal["stub", "rag_llm"] = "rag_llm"
+
+    # Read timeout for a single evaluation call to /v1/rag/chat
+    # (app/infrastructure/rag_llm_evaluator.py). Set higher than
+    # RAG_PATIENT_READ_TIMEOUT_SECONDS's observed 6-48s: the evaluation
+    # prompt carries the full grading rubric plus case/transcript/test/quiz
+    # data (see app/infrastructure/evaluation_prompt.py) rather than one
+    # short conversational turn, and docs/backend-rag-handoff.md's own
+    # generic guidance for direct chat is "at least" a 150s read timeout --
+    # 90s/100s below stays comfortably under that ceiling while still
+    # catching a genuine hang meaningfully faster than 150s would; revisit
+    # once real /v1/rag/chat evaluation latency has been observed in
+    # production the way the patient route's 6-48s range was.
+    rag_evaluation_read_timeout_seconds: float = 90.0
+
+    # EvaluateSessionAsyncUseCase's own hard deadline for the whole
+    # evaluate() call (adapter-internal retries included). Slightly above
+    # rag_evaluation_read_timeout_seconds for the same reason
+    # rag_patient_hard_timeout_seconds sits above
+    # rag_patient_read_timeout_seconds -- a slow-but-still-alive HTTP
+    # response shouldn't race byte-for-byte against the orchestration
+    # timeout that also has to account for scheduling/DB overhead around the
+    # call itself.
+    rag_evaluation_hard_timeout_seconds: float = 100.0
 
     # Which SpeechToTextPort implementation app/api/deps.py wires up for
     # POST /transcribe, POST /sessions/{id}/chat-voice, and WS /ws/voice.
-    # "colab"   -- app/infrastructure/colab_stt_adapter.py (HTTP call to a
-    #              self-hosted Whisper model exposed by the Colab notebook at
-    #              colab/leva_stt_tts_notebook.py, via colab_api_base_url).
-    # "whisper" -- DEPRECATED, kept for rollback only. app/infrastructure/legacy/
-    #              local_whisper_stt_adapter.py (faster-whisper "tiny" model,
-    #              forced Arabic, CPU-only; falls back to the stub adapter on
-    #              load/inference failure).
-    # "stub"    -- app/infrastructure/stub_stt.py (canned placeholder transcript,
-    #              no ML dependency at all -- what the test suite uses by default,
-    #              see tests/conftest.py).
-    stt_backend: Literal["colab", "whisper", "stub"] = "colab"
+    # "colab"     -- app/infrastructure/colab_stt_adapter.py (HTTP call to a
+    #                self-hosted Whisper model exposed by the Colab notebook at
+    #                colab/leva_stt_tts_notebook.py, via colab_api_base_url).
+    # "whisper"   -- DEPRECATED, kept for rollback only. app/infrastructure/legacy/
+    #                local_whisper_stt_adapter.py (faster-whisper "tiny" model,
+    #                forced Arabic, CPU-only; falls back to the stub adapter on
+    #                load/inference failure). NOT the same thing as "local_gpu"
+    #                below -- this is a different, smaller, CPU-only model kept
+    #                for a different reason (a light dependency-free rollback),
+    #                not a GPU-accelerated equivalent of the Colab backend.
+    # "local_gpu" -- app/infrastructure/local_gpu_stt_adapter.py: the exact same
+    #                openai-whisper "small" model (device="cuda") the Colab
+    #                notebook runs, loaded in-process instead of called over
+    #                HTTP. Loaded once at startup by
+    #                app/infrastructure/voice_models.py (see app/main.py's
+    #                lifespan) -- forces an attempt to load regardless of
+    #                local_gpu_min_free_vram_gb (an operator explicitly forcing
+    #                this accepts a tighter-than-recommended fit), but still
+    #                falls back to "colab" behavior automatically, without
+    #                crashing the server, if the load fails for any reason (no
+    #                GPU, missing deps, OOM, ...).
+    # "auto"      -- Same local model as "local_gpu", but only attempted if
+    #                voice_models.py's startup VRAM check (torch.cuda.mem_get_info())
+    #                clears local_gpu_min_free_vram_gb first; falls straight to
+    #                "colab" behavior otherwise, without attempting to load.
+    # "stub"      -- app/infrastructure/stub_stt.py (canned placeholder transcript,
+    #                no ML dependency at all -- what the test suite uses by default,
+    #                see tests/conftest.py).
+    stt_backend: Literal["colab", "whisper", "stub", "local_gpu", "auto"] = "colab"
 
     # Which TextToSpeechPort implementation app/api/deps.py wires up (same
-    # three endpoints as stt_backend).
-    # "colab" -- app/infrastructure/colab_tts_adapter.py (HTTP call to a
-    #            self-hosted leva-tts model exposed by the Colab notebook at
-    #            colab/leva_stt_tts_notebook.py, via colab_api_base_url).
-    # "gtts"  -- DEPRECATED, kept for rollback only. app/infrastructure/legacy/
-    #            local_tts_adapter.py (gTTS; makes a network call to Google
-    #            Translate's TTS endpoint per request -- not offline, despite
-    #            the "Local" adapter-class name. Falls back to the stub
-    #            adapter's silent placeholder WAV on failure.)
-    # "stub"  -- app/infrastructure/stub_tts.py (silent placeholder WAV, no
-    #            network/ML dependency -- what the test suite uses by default).
-    tts_backend: Literal["colab", "gtts", "stub"] = "colab"
+    # endpoints as stt_backend).
+    # "colab"     -- app/infrastructure/colab_tts_adapter.py (HTTP call to a
+    #                self-hosted leva-tts model exposed by the Colab notebook at
+    #                colab/leva_stt_tts_notebook.py, via colab_api_base_url).
+    # "gtts"      -- DEPRECATED, kept for rollback only. app/infrastructure/legacy/
+    #                local_tts_adapter.py (gTTS; makes a network call to Google
+    #                Translate's TTS endpoint per request -- not offline, despite
+    #                the "Local" adapter-class name. Falls back to the stub
+    #                adapter's silent placeholder WAV on failure.)
+    # "local_gpu" -- app/infrastructure/local_gpu_tts_adapter.py: the exact same
+    #                leva-tts model/speaker (default "Amina") the Colab notebook
+    #                runs, loaded in-process instead of called over HTTP. Same
+    #                startup-loading/fallback behavior as STT's "local_gpu"
+    #                above, decided independently of it (STT can end up local
+    #                while TTS falls back to Colab, or vice versa, e.g. if only
+    #                one of the two system dependencies leva-tts needs is
+    #                missing -- see voice_models.py).
+    # "auto"      -- Same local model as "local_gpu", gated by the same startup
+    #                VRAM check as STT's "auto" above.
+    # "stub"      -- app/infrastructure/stub_tts.py (silent placeholder WAV, no
+    #                network/ML dependency -- what the test suite uses by default).
+    tts_backend: Literal["colab", "gtts", "stub", "local_gpu", "auto"] = "colab"
+
+    # Minimum free VRAM (GB) required for STT_BACKEND=auto / TTS_BACKEND=auto to
+    # choose local GPU loading over the Colab fallback -- checked once at process
+    # startup by app/infrastructure/voice_models.py via torch.cuda.mem_get_info()
+    # (currently-free VRAM, not just the card's total capacity -- see that
+    # module's docstring for why "free right now" is the number that matters).
+    # Whisper "small" + leva-tts together -- the exact production models
+    # colab/leva_stt_tts_notebook.py runs -- measured ~3.5GB combined on Colab's
+    # T4 GPU. This threshold is set above that measured figure, not at it, to
+    # leave headroom for CUDA context overhead, VRAM fragmentation, and whatever
+    # else may already be resident on the target GPU (compositor, other
+    # processes) by the time this process starts. STT_BACKEND=local_gpu /
+    # TTS_BACKEND=local_gpu (forced, not "auto") skip this check entirely --
+    # see the "local_gpu" bullets above.
+    local_gpu_min_free_vram_gb: float = 4.5
 
     # Base URL of the Colab-hosted STT/TTS API (see colab/leva_stt_tts_notebook.py),
     # e.g. an ngrok URL like "https://xxxx-xx-xx-xxx-xx.ngrok-free.app". This

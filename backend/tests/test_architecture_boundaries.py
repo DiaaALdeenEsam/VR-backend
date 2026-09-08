@@ -26,6 +26,9 @@ FORBIDDEN_TOP_LEVEL_IMPORTS = {
     "gtts",
     "av",
     "ctranslate2",
+    "whisper",
+    "leva_tts",
+    "soundfile",
     "fastapi",
     "starlette",
     "sqlmodel",
@@ -45,6 +48,9 @@ LOCAL_ML_ADAPTER_MODULES = [
     "infrastructure/colab_tts_adapter.py",
     "infrastructure/legacy/local_whisper_stt_adapter.py",
     "infrastructure/legacy/local_tts_adapter.py",
+    "infrastructure/local_gpu_stt_adapter.py",
+    "infrastructure/local_gpu_tts_adapter.py",
+    "infrastructure/voice_models.py",
 ]
 
 

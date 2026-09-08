@@ -51,6 +51,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 import httpx
+import websockets
 from sqlmodel import func, select
 
 from app.config import get_settings
@@ -323,6 +324,51 @@ async def _wait_for_message_settled(
     raise E2EStepFailed(f"message {message_id} in session {session_id} never settled within {timeout}s")
 
 
+def _ws_url(base_url: str, session_id: str) -> str:
+    ws_base = base_url.replace("https://", "wss://").replace("http://", "ws://")
+    return f"{ws_base}/ws/voice?session_id={session_id}"
+
+
+async def _evaluate_and_wait_for_result(
+    client: httpx.AsyncClient, base_url: str, session_id: str, timeout: float = 120.0
+) -> dict:
+    """POST /sessions/{id}/evaluate now acks immediately with status="pending"
+    (see app/api/schemas/evaluation.py) -- the real LLM-judge result (or a
+    "failed" status, with no fallback score -- see
+    app/infrastructure/rag_llm_evaluator.py) arrives later as a
+    `{"type": "evaluation", ...}` frame over WS /ws/voice?session_id=...
+    (app/infrastructure/ws_hub.py). This connects the WS *before* posting
+    /evaluate (same race avoidance as scripts/test_voice_ws_live.py's own
+    docstring: a push with nothing listening is a silent no-op), then waits
+    for that one frame.
+
+    `timeout` (120s) comfortably exceeds
+    Settings.rag_evaluation_hard_timeout_seconds's default (100s) plus
+    margin for scheduling/DB overhead around the call itself -- same
+    reasoning as scripts/test_voice_ws_live.py's DEFAULT_TIMEOUT_SECONDS
+    relative to rag_patient_hard_timeout_seconds.
+    """
+
+    async with websockets.connect(_ws_url(base_url, session_id)) as ws:
+        r = await client.post(f"/sessions/{session_id}/evaluate")
+        _assert(r.status_code == 200, f"POST /evaluate expected 200 (gold_standard set?), got {r.status_code}", r)
+        pending_body = r.json()
+        _assert(pending_body["status"] == "pending", f"expected status=pending, got {pending_body!r}")
+
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            remaining = deadline - time.monotonic()
+            try:
+                frame = await asyncio.wait_for(ws.recv(), timeout=remaining)
+            except (asyncio.TimeoutError, TimeoutError):
+                break
+            payload = json.loads(frame)
+            if payload.get("type") == "evaluation":
+                return payload
+
+    raise E2EStepFailed(f"evaluation for session {session_id} never arrived over WS within {timeout}s")
+
+
 async def _wait_for_health(client: httpx.AsyncClient, timeout: float = 30.0) -> bool:
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
@@ -456,11 +502,12 @@ async def step_e2e(
             else:
                 print("   g. no questions available for this scenario -- skipping answer step")
 
-            # h. evaluate
-            r = await client.post(f"/sessions/{session_id}/evaluate")
-            _assert(r.status_code == 200, f"POST /evaluate expected 200 (gold_standard set?), got {r.status_code}", r)
-            body = r.json()
-            print(f"   h. POST /sessions/{{id}}/evaluate -> 200")
+            # h. evaluate -- async now (POST acks "pending", the real
+            # LLM-judge result arrives over WS; see
+            # _evaluate_and_wait_for_result's docstring above).
+            body = await _evaluate_and_wait_for_result(client, base_url, session_id)
+            print(f"   h. POST /sessions/{{id}}/evaluate -> 200 (pending), WS evaluation frame: status={body['status']}")
+            _assert(body["status"] == "complete", f"evaluation did not complete: {body!r}")
             print(f"      score: {body['score']}")
             print(f"      summary: {body['summary']}")
             for c in body["criteria_breakdown"]:

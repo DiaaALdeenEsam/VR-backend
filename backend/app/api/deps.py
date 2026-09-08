@@ -17,7 +17,7 @@ from fastapi import Depends
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.application.use_cases.answer_question import AnswerQuestionUseCase
-from app.application.use_cases.evaluate_session import EvaluateSessionUseCase
+from app.application.use_cases.evaluate_session_async import EvaluateSessionAsyncUseCase
 from app.application.use_cases.get_session_review import GetSessionReviewUseCase
 from app.application.use_cases.list_questions import ListQuestionsUseCase
 from app.application.use_cases.list_relevant_tests import ListRelevantTestsUseCase
@@ -40,7 +40,7 @@ from app.domain.repositories import (
     SpeechToTextPort,
     TextToSpeechPort,
 )
-from app.infrastructure import inflight_sessions, ws_hub
+from app.infrastructure import inflight_sessions, voice_models, ws_hub
 from app.infrastructure.colab_stt_adapter import ColabSTTAdapter
 from app.infrastructure.colab_tts_adapter import ColabTTSAdapter
 from app.infrastructure.db.engine import get_session_factory
@@ -48,6 +48,7 @@ from app.infrastructure.db.repositories.unit_of_work import SqlAlchemyUnitOfWork
 from app.infrastructure.legacy.local_tts_adapter import LocalTTSAdapter
 from app.infrastructure.legacy.local_whisper_stt_adapter import LocalWhisperSTTAdapter
 from app.infrastructure.rag_client_adapter import RagClientAdapter
+from app.infrastructure.rag_llm_evaluator import RagLlmEvaluator
 from app.infrastructure.rag_patient_generator import RagPatientReplyGenerator
 from app.infrastructure.stub_evaluator import StubEvaluationGenerator
 from app.infrastructure.stub_stt import StubSTTAdapter
@@ -150,6 +151,17 @@ def get_session_concurrency_guard() -> SessionConcurrencyGuard:
     return inflight_sessions.get_singleton()
 
 
+def get_evaluation_concurrency_guard() -> SessionConcurrencyGuard:
+    """Process-wide singleton, but a *different instance* from
+    get_session_concurrency_guard() above -- see
+    app/infrastructure/inflight_sessions.py's get_evaluation_singleton() and
+    SessionBusyError's `operation` parameter (app/domain/exceptions.py) for
+    why message-reply generation and evaluation generation are tracked
+    separately even though both key by session_id."""
+
+    return inflight_sessions.get_evaluation_singleton()
+
+
 def get_reply_push_port() -> ReplyPushPort:
     """Process-wide singleton (see app/infrastructure/ws_hub.py) -- same
     reasoning as get_session_concurrency_guard(): a WS connection registered
@@ -242,22 +254,46 @@ def get_session_review_use_case(
 def get_evaluation_generator() -> EvaluationGenerator:
     """Picks the EvaluationGenerator implementation via Settings.evaluation_backend.
 
-    Only "stub" exists today; mirrors get_patient_reply_generator's shape so a
-    real/local LLM evaluator backend can be added the same way later (a new
-    Literal member on Settings.evaluation_backend plus a branch here).
+    "rag_llm" (the default) is the LLM-judge backed by the external RAG
+    API's clinician-chat route (app/infrastructure/rag_llm_evaluator.py) --
+    mirrors get_patient_reply_generator's shape. "stub" is a deprecated
+    escape hatch (app/infrastructure/stub_evaluator.py) kept only until
+    "rag_llm" is confirmed working in production; not otherwise selected.
     """
 
     backend = get_settings().evaluation_backend
+    if backend == "rag_llm":
+        return RagLlmEvaluator(get_settings())
     if backend == "stub":
         return StubEvaluationGenerator()
     raise ValueError(f"unknown evaluation_backend: {backend!r}")
 
 
 def get_evaluate_session_use_case(
-    uow: AbstractUnitOfWork = Depends(get_uow),
+    uow_factory: Callable[[], AbstractUnitOfWork] = Depends(get_uow_factory),
     evaluation_generator: EvaluationGenerator = Depends(get_evaluation_generator),
-) -> EvaluateSessionUseCase:
-    return EvaluateSessionUseCase(uow, evaluation_generator)
+    concurrency_guard: SessionConcurrencyGuard = Depends(get_evaluation_concurrency_guard),
+    push_port: ReplyPushPort = Depends(get_reply_push_port),
+) -> EvaluateSessionAsyncUseCase:
+    """What app/api/routers/sessions.py depends on for POST /sessions/{id}/evaluate.
+
+    Unconditionally EvaluateSessionAsyncUseCase now, the same reasoning as
+    get_post_message_use_case above: the default EvaluationGenerator
+    ("rag_llm") is RAG-API-backed and tens-of-seconds-per-call shaped, so
+    there is no fast synchronous backend left in production to make the old
+    "return the real result in this same response" EvaluateSessionUseCase
+    (still used directly by tests -- see tests/conftest.py's
+    dependency_overrides for this exact function) worthwhile as the default
+    here.
+    """
+
+    return EvaluateSessionAsyncUseCase(
+        uow_factory=uow_factory,
+        evaluation_generator=evaluation_generator,
+        settings=get_settings(),
+        concurrency_guard=concurrency_guard,
+        push_port=push_port,
+    )
 
 
 def get_speech_to_text_port() -> SpeechToTextPort:
@@ -266,7 +302,14 @@ def get_speech_to_text_port() -> SpeechToTextPort:
     "colab" (the default) and "whisper" (deprecated, rollback-only -- see
     app/infrastructure/legacy/local_whisper_stt_adapter.py) are both cheap to
     construct: neither loads a model or opens a connection until transcribe()
-    is actually called.
+    is actually called. "local_gpu"/"auto" are different: the model behind
+    them is loaded once at process startup (app/main.py's lifespan ->
+    voice_models.init_voice_backend(), not here) -- this just returns whatever
+    that startup step already decided/built. If it decided to fall back (no
+    GPU, insufficient VRAM for "auto", missing deps, load failure -- see
+    voice_models.py), get_local_stt_adapter() returns None and this falls
+    through to the same ColabSTTAdapter the "colab" branch returns, exactly
+    matching the fallback voice_models.py already logged at startup.
     """
 
     settings = get_settings()
@@ -274,13 +317,19 @@ def get_speech_to_text_port() -> SpeechToTextPort:
         return StubSTTAdapter()
     if settings.stt_backend == "whisper":
         return LocalWhisperSTTAdapter()
+    if settings.stt_backend in ("local_gpu", "auto"):
+        local_adapter = voice_models.get_local_stt_adapter()
+        if local_adapter is not None:
+            return local_adapter
     return ColabSTTAdapter(settings)
 
 
 def get_text_to_speech_port() -> TextToSpeechPort:
     """Picks the TextToSpeechPort implementation via Settings.tts_backend.
 
-    Same construction-is-cheap reasoning as get_speech_to_text_port() above.
+    Same construction-is-cheap reasoning as get_speech_to_text_port() above
+    for "colab"/"gtts", and the same startup-loaded-singleton-or-fall-back
+    reasoning for "local_gpu"/"auto".
     """
 
     settings = get_settings()
@@ -288,6 +337,10 @@ def get_text_to_speech_port() -> TextToSpeechPort:
         return StubTTSAdapter()
     if settings.tts_backend == "gtts":
         return LocalTTSAdapter()
+    if settings.tts_backend in ("local_gpu", "auto"):
+        local_adapter = voice_models.get_local_tts_adapter()
+        if local_adapter is not None:
+            return local_adapter
     return ColabTTSAdapter(settings)
 
 

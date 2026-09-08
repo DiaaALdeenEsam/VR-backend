@@ -64,15 +64,26 @@ class SessionBusyError(DomainError):
     PostMessageAsyncUseCase). Chosen over silently queueing or cancelling
     the in-flight call -- see that use case's module docstring for why.
 
+    Also raised by EvaluateSessionAsyncUseCase for the same reason, one
+    evaluation in flight per session at a time -- `operation` distinguishes
+    the two in the message text ("reply" vs "evaluation") without needing a
+    second exception class; both map to the same 409 regardless of which
+    operation collided (see app/api/error_handlers.py). The two operations
+    use separate concurrency-guard instances (see
+    app/infrastructure/inflight_sessions.py), so a message generating and an
+    evaluation generating for the same session_id at the same time never
+    collide with each other, only with a second call of their own kind.
+
     Given its own registered handler in app/api/error_handlers.py, mapping
     to 409 Conflict: distinct from the generic DomainError -> 400 mapping,
     since "the request is fine, but the session isn't ready for it yet" is a
     conflict with current state, not a malformed request.
     """
 
-    def __init__(self, session_id: Any) -> None:
+    def __init__(self, session_id: Any, *, operation: str = "reply") -> None:
         self.session_id = session_id
-        super().__init__(f"session {session_id!r} already has a reply being generated")
+        self.operation = operation
+        super().__init__(f"session {session_id!r} already has a {operation} being generated")
 
 
 class RagServiceUnavailableError(DomainError):

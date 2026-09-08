@@ -23,6 +23,7 @@ from app.api.schemas.session import (
 from app.api.schemas.test import TestOrderCreate, TestOrderResponse
 from app.application.use_cases.answer_question import AnswerQuestionUseCase
 from app.application.use_cases.evaluate_session import EvaluateSessionUseCase
+from app.application.use_cases.evaluate_session_async import EvaluateSessionAsyncUseCase
 from app.application.use_cases.get_session_review import GetSessionReviewUseCase
 from app.application.use_cases.order_test import OrderTestUseCase
 from app.application.use_cases.start_session import StartSessionUseCase
@@ -112,17 +113,36 @@ async def submit_answer(
 @router.post("/sessions/{session_id}/evaluate", response_model=SessionEvaluationResponse)
 async def evaluate_session(
     session_id: str,
-    use_case: EvaluateSessionUseCase = Depends(get_evaluate_session_use_case),
+    use_case: EvaluateSessionUseCase | EvaluateSessionAsyncUseCase = Depends(get_evaluate_session_use_case),
 ) -> SessionEvaluationResponse:
     """OSCE-style evaluation of the session so far, generated on demand -- not persisted.
 
+    `use_case` is typed as a Union even though app/api/deps.py's
+    get_evaluate_session_use_case unconditionally builds the async one in
+    production, the same reasoning as voice.py's chat_voice/voice_websocket
+    routes: tests override that dependency back to the synchronous
+    EvaluateSessionUseCase (wired with the fast/deterministic stub generator)
+    for fixtures that don't want to exercise the async orchestration layer --
+    see tests/conftest.py. Both branches are real, live code.
+
+    In production this always responds status="pending" immediately (score/
+    summary null, empty criteria_breakdown) -- the real LLM-judge result (or
+    a "failed" status with no score) is pushed later over the session's WS
+    connection (WS /ws/voice?session_id=..., see app/infrastructure/ws_hub.py)
+    as a `{"type": "evaluation", ...}` frame with the same field names as
+    this response. A 409 (SessionBusyError) means an evaluation for this
+    session is already being generated -- see EvaluateSessionAsyncUseCase's
+    module docstring for the concurrency policy.
+
     404 if the session or its scenario doesn't exist; 400 if the scenario has
     no gold_standard set (see MissingGoldStandardError, handled centrally by
-    app/api/error_handlers.py's generic DomainError -> 400 mapping).
+    app/api/error_handlers.py's generic DomainError -> 400 mapping) -- both
+    raised synchronously, before any "pending" response goes out.
     """
 
     evaluation = await use_case.execute(session_id)
     return SessionEvaluationResponse(
+        status=evaluation.status,
         score=evaluation.score,
         summary=evaluation.summary,
         criteria_breakdown=[

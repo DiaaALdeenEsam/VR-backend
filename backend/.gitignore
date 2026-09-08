@@ -8,3 +8,14 @@ app.db
 *.db-journal
 .ruff_cache/
 .mypy_cache/
+
+# Local STT/TTS model weights (openai-whisper "small", leva-tts -- see
+# app/infrastructure/voice_models.py) if ever cached inside the repo instead of the
+# libraries' default ~/.cache location. Not expected in normal operation, but guarded
+# here defensively since these are gigabyte-scale downloads that must never be committed.
+.cache/
+model_cache/
+*.pt
+*.pth
+*.ckpt
+*.safetensors

@@ -56,3 +56,22 @@ _singleton = InMemorySessionConcurrencyGuard()
 
 def get_singleton() -> InMemorySessionConcurrencyGuard:
     return _singleton
+
+
+# A second, independent instance for EvaluateSessionAsyncUseCase
+# (app/application/use_cases/evaluate_session_async.py) -- deliberately NOT
+# the same instance as get_singleton() above, even though both key by the
+# same session_id and both are "one background generation in flight per
+# session" guards. A message reply generating in the background and an
+# evaluation generating in the background are unrelated operations that
+# happen to share a session_id; sharing one guard between them would make an
+# in-flight message reply block an evaluate call (and vice versa) for a
+# reason neither operation actually depends on. See SessionBusyError's
+# `operation` parameter (app/domain/exceptions.py) for how the two are told
+# apart in the 409 response text once each guard raises for its own kind of
+# collision.
+_evaluation_singleton = InMemorySessionConcurrencyGuard()
+
+
+def get_evaluation_singleton() -> InMemorySessionConcurrencyGuard:
+    return _evaluation_singleton

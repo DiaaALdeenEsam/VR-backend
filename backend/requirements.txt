@@ -28,3 +28,30 @@ miniaudio==1.71            # legacy TTS: decodes gTTS's MP3 output to raw PCM so
 httpx==0.27.2  # also used directly by colab_stt_adapter.py / colab_tts_adapter.py for the Colab API calls
 pytest==8.3.3
 pytest-asyncio==0.24.0
+
+# Local-GPU voice pipeline (app/infrastructure/local_gpu_stt_adapter.py, local_gpu_tts_adapter.py,
+# voice_models.py) -- STT_BACKEND=local_gpu/auto, TTS_BACKEND=local_gpu/auto (see app/config.py).
+# Loads the SAME production models the Colab notebook runs (openai-whisper "small" + leva-tts, see
+# colab/leva_stt_tts_notebook.py CELL 1/2) in-process on CUDA instead of calling them over HTTP.
+# Combined measured VRAM footprint on Colab's T4: ~3.5GB -- see Settings.local_gpu_min_free_vram_gb.
+#
+# torch must be installed with a CUDA-enabled build matching the target machine's installed
+# driver/CUDA version -- pip's default index only has the CPU-only build. Install it BEFORE
+# leva-tts, same order as the Colab notebook's CELL 1, to avoid leva-tts's own torch dependency
+# pulling in an incompatible build transitively. Example (verify the cuXXX tag against the real
+# machine's driver first -- this is a placeholder, not a verified-on-target value):
+#   pip install torch==2.5.1 --index-url https://download.pytorch.org/whl/cu121
+# 2.5.1 satisfies leva-tts's own constraint (torch>=2.3,<2.9 -- see
+# https://github.com/MohammedAly22/Leva-TTS) and matches the CPU-only 2.5.1 build already present
+# in this project's history (left over from the deleted local-Qwen path) -- same version, CUDA
+# build instead of CPU.
+# torch==2.5.1              # install separately with the correct --index-url above, not via this file
+openai-whisper==20250625    # STT: same package as colab/leva_stt_tts_notebook.py CELL 2 (model size
+                             # "small" is a constant in local_gpu_stt_adapter.py, not a pip pin)
+leva-tts==0.1.8              # TTS: same package/class (LevaTTS) as colab/leva_stt_tts_notebook.py CELL 2.
+                             # Needs espeak-ng, ffmpeg, and libsndfile1 installed as SYSTEM packages
+                             # (not pip-installable) -- see that notebook's CELL 1. voice_models.py
+                             # checks for espeak-ng/ffmpeg at startup and falls back to Colab TTS
+                             # automatically if either is missing.
+soundfile==0.14.0            # WAV encoding (PCM_16) for local_gpu_tts_adapter.py -- same library/encoding
+                             # the Colab notebook's /tts handler uses (CELL 3)

@@ -160,8 +160,24 @@ class SessionEvaluation:
     Not a persisted aggregate (there is no `evaluations` table) -- it's
     generated on demand by an EvaluationGenerator port (see
     app/domain/repositories.py) and returned straight through the API.
+
+    `status` mirrors Message.status's pending/generating/complete/failed
+    vocabulary (see that field's docstring above) for the same reason:
+    EvaluateSessionAsyncUseCase (app/application/use_cases/evaluate_session_async.py)
+    returns a "pending" instance immediately (score/summary None, no
+    criteria yet) while the real LLM-judge call
+    (app/infrastructure/rag_llm_evaluator.py,
+    POST /v1/rag/chat, tens of seconds per call) runs in the background, then
+    pushes a "complete" (or "failed", on an unrecoverable RAG-API error/
+    timeout/malformed response -- see that adapter's module docstring for why
+    there is deliberately no rule-based fallback score) instance over the
+    session's WS channel. EvaluateSessionUseCase (the synchronous path, still
+    real code -- used directly by fast/deterministic tests, same relationship
+    PostMessageUseCase has to PostMessageAsyncUseCase) always returns
+    "complete" immediately, same as before this field existed.
     """
 
-    score: float
-    summary: str
+    status: str = "complete"
+    score: float | None = None
+    summary: str | None = None
     criteria_breakdown: list[EvaluationCriterion] = field(default_factory=list)

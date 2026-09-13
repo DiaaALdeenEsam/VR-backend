@@ -29,6 +29,7 @@ from __future__ import annotations
 import asyncio
 import io
 import logging
+import time
 from typing import Any
 
 from app.domain.exceptions import VoiceServiceUnavailableError
@@ -85,13 +86,21 @@ class LocalGpuTTSAdapter(TextToSpeechPort):
         if not text:
             raise VoiceServiceUnavailableError(_SERVICE_NAME, "'text' must not be empty")
 
+        logger.info("[local_gpu_tts] inference_started | text_chars=%d", len(text))
+        start_time = time.monotonic()
+
         try:
             audio_bytes = await asyncio.to_thread(_synthesize_sync, self._engine, text, self._speaker)
         except Exception as exc:
-            logger.exception("local leva-tts synthesis failed")
+            logger.exception("[local_gpu_tts] inference_failed | duration_s=%.1f", time.monotonic() - start_time)
             raise VoiceServiceUnavailableError(_SERVICE_NAME, f"synthesis failed: {exc}") from exc
 
         if not audio_bytes:
             raise VoiceServiceUnavailableError(_SERVICE_NAME, "returned an empty audio response")
 
+        logger.info(
+            "[local_gpu_tts] inference_succeeded | duration_s=%.1f | audio_bytes=%d",
+            time.monotonic() - start_time,
+            len(audio_bytes),
+        )
         return audio_bytes

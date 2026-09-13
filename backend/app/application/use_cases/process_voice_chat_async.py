@@ -1,10 +1,14 @@
 from __future__ import annotations
 
+import logging
+import time
 from dataclasses import dataclass
 
 from app.application.use_cases.post_message_async import PostMessageAsyncUseCase
 from app.domain.entities import Message
 from app.domain.repositories import SpeechToTextPort
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -52,9 +56,24 @@ class ProcessVoiceChatAsyncUseCase:
     async def execute(
         self, session_id: str, audio_bytes: bytes, filename: str | None = None
     ) -> VoiceChatAsyncResult:
+        logger.info(
+            "[voice_chat] flow_started | session_id=%s | audio_bytes=%d",
+            session_id,
+            len(audio_bytes),
+        )
+        start_time = time.monotonic()
+
         transcribed_text = await self._speech_to_text.transcribe(audio_bytes, filename)
+        logger.info(
+            "[voice_chat] stt_completed | session_id=%s | duration_s=%.1f | transcript_chars=%d",
+            session_id,
+            time.monotonic() - start_time,
+            len(transcribed_text),
+        )
 
         # Raises NotFoundError/SessionBusyError itself -- nothing extra here.
+        # The patient-reply + TTS phases are logged by PostMessageAsyncUseCase
+        # itself (see post_message_async.py's [post_message] checkpoints).
         reply_message = await self._post_message_async_use_case.execute(session_id, transcribed_text)
 
         return VoiceChatAsyncResult(transcribed_text=transcribed_text, reply_message=reply_message)

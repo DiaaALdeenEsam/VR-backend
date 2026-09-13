@@ -20,6 +20,7 @@ brief, not a silent degrade.
 from __future__ import annotations
 
 import logging
+import time
 
 import httpx
 
@@ -49,6 +50,9 @@ class ColabSTTAdapter(SpeechToTextPort):
 
         files = {"file": (filename or "audio.wav", audio_bytes, "application/octet-stream")}
         timeout = httpx.Timeout(self._settings.colab_api_timeout_seconds)
+
+        logger.info("[colab_stt] request_started | audio_bytes=%d", len(audio_bytes))
+        start_time = time.monotonic()
 
         try:
             async with httpx.AsyncClient(
@@ -82,4 +86,9 @@ class ColabSTTAdapter(SpeechToTextPort):
         if not isinstance(transcript, str) or not transcript.strip():
             raise VoiceServiceUnavailableError(_SERVICE_NAME, "returned an empty transcript")
 
+        logger.info(
+            "[colab_stt] request_succeeded | duration_s=%.1f | transcript_chars=%d",
+            time.monotonic() - start_time,
+            len(transcript),
+        )
         return transcript

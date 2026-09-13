@@ -55,23 +55,33 @@ class WebSocketPushHub(ReplyPushPort):
     async def push(self, session_id: str, payload: dict) -> bool:
         websocket = self._connections.get(session_id)
         if websocket is None:
+            logger.info("[ws_hub] push_skipped | session_id=%s | reason=no_active_connection", session_id)
             return False
         try:
             await websocket.send_json(payload)
+            logger.info(
+                "[ws_hub] push_delivered | session_id=%s | payload_type=%s", session_id, payload.get("type")
+            )
             return True
         except Exception:
-            logger.warning("ws_hub: push failed for session_id=%s (connection likely closed)", session_id)
+            logger.warning("[ws_hub] push_failed | session_id=%s | reason=connection likely closed", session_id)
             return False
 
     async def push_bytes(self, session_id: str, data: bytes) -> bool:
         websocket = self._connections.get(session_id)
         if websocket is None:
+            logger.info("[ws_hub] push_bytes_skipped | session_id=%s | reason=no_active_connection", session_id)
             return False
         try:
             await websocket.send_bytes(data)
+            logger.info(
+                "[ws_hub] push_bytes_delivered | session_id=%s | bytes=%d", session_id, len(data)
+            )
             return True
         except Exception:
-            logger.warning("ws_hub: push_bytes failed for session_id=%s (connection likely closed)", session_id)
+            logger.warning(
+                "[ws_hub] push_bytes_failed | session_id=%s | reason=connection likely closed", session_id
+            )
             return False
 
 

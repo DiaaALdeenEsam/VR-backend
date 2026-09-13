@@ -1,0 +1,99 @@
+{
+  "disease_name": "Adenomyomatosis of the gall bladder",
+  "source": "Kumar and Clark Clinical Medicine 11th Ed 2025",
+  "chapter": "Chapter 24: Biliary tract and pancreatic disease",
+  "pages": "743-744",
+  "fields": {
+    "1_pathophysiology": {
+      "definition": "Adenomyomatosis is a gall bladder abnormality characterized by hyperplasia of the mucosa, thickening of the muscle wall, and multiple intramural diverticula (the so-called 'Rokitansky-Aschoff sinuses').",
+      "mechanism": "The condition has been suggested to be secondary to increased intraluminal gall bladder pressure but this is not proven. The hyperplastic changes involve both the mucosal layer and the muscularis propria, with formation of diverticula within the wall.",
+      "classification": "Can occur in different distributions: (1) Diffuse adenomyomatosis; (2) Segmental distribution -- particularly associated with coexisting gallstones; (3) Fundal form. The segmental form is more likely to have coexisting gallstones, but there is no evidence to support a direct relationship between the two.",
+      "source_reference": "Page 744"
+    },
+    "2_risk_factors": {
+      "modifiable": ["Diet high in animal fat/low in fibre", "Obesity with or without metabolic syndrome", "Rapid weight loss (e.g., very low-calorie diet)", "Drugs -- contraceptive pill"],
+      "non_modifiable": ["Increasing age", "Sex (rates are equal in males and females, unlike cholelithiasis which is F > M)", "Family history and genetics", "Multiparity", "Ileal disease or resection", "Liver cirrhosis", "Spinal cord injury", "Diabetes mellitus", "Acromegaly treated with octreotide", "Total parenteral nutrition"],
+      "epidemiology": {
+        "age_group": "Not specifically stated; detected as incidental finding during investigation for possible gallstone disease",
+        "sex_predominance": "Rates are equal in males and females (in contrast to cholelithiasis)",
+        "geographical_prevalence": "Not specifically stated"
+      },
+      "source_reference": "Page 744"
+    },
+    "3_symptoms_and_signs": {
+      "cardinal_symptoms": ["Unlikely that adenomyomatosis alone is a cause of biliary symptoms"],
+      "other_symptoms": ["Vague upper abdominal discomfort", "Indigestion", "Distension"],
+      "clinical_signs": {
+        "inspection": ["Incidental finding during investigation for possible gallstone disease"],
+        "palpation": ["Right upper quadrant tenderness (may be present but not specific)"],
+        "percussion": ["Focal tenderness over gall bladder region"],
+        "auscultation": ["Reduced or absent bowel sounds in severe disease"]
+      },
+      "atypical_presentations": ["Asymptomatic -- most commonly an incidental finding", "May coexist with gallstones without causing additional symptoms", "Segmental distribution form may have more prominent features due to associated gallstones"],
+      "source_reference": "Page 744"
+    },
+    "4_laboratory_investigations": [
+      {"test_name": "Liver biochemistry (bilirubin, alkaline phosphatase)", "expected_finding": "May be marginally elevated in the presence of cholecystitis alone", "clinical_significance": "Helps identify associated bile duct obstruction and differentiate from other causes of right upper quadrant pain", "priority": "optional"},
+      {"test_name": "Full blood count (FBC)", "expected_finding": "May show moderate leucocytosis if acute exacerbation present", "clinical_significance": "Supports diagnosis of cholecystitis; helps assess severity of sepsis", "priority": "optional"},
+      {"test_name": "C-reactive protein (CRP)", "expected_finding": "May be raised if acute exacerbation present", "clinical_significance": "Useful for assessing disease severity and prognosis", "priority": "optional"}
+    ],
+    "5_radiological_investigations": [
+      {"modality": "Ultrasound scanning (transabdominal)", "expected_finding": "Evidence of diseased gall bladder wall; thickening of the muscle wall", "clinical_significance": "Used to guide decision for cholecystectomy in the absence of defined gall bladder stones. Identifies gall bladder wall abnormalities and inflammatory changes.", "priority": "essential"},
+      {"modality": "CT scan (contrast-enhanced)", "expected_finding": "Gall bladder wall thickening; intramural diverticula", "clinical_significance": "Used to define pathology when clinical situation fails to respond to conservative management.", "priority": "confirmatory"},
+      {"modality": "Histopathology (post-cholecystectomy)", "expected_finding": "Hyperplasia of the mucosa, thickening of the muscle wall, and multiple intramural diverticula (Rokitansky-Aschoff sinuses)", "clinical_significance": "Definitive diagnosis; confirms adenomyomatosis.", "priority": "confirmatory"}
+    ],
+    "6_differential_diagnosis": [
+      {"condition": "Functional bowel disease (most common)", "distinguishing_feature": "Most patients with chronic right hypochondrial pain are suffering from functional bowel disease rather than true gall bladder pathology"},
+      {"condition": "Irritable bowel syndrome (spasm of hepatic flexure)", "distinguishing_feature": "Hepatic flexure syndrome mimics biliary colic; pain may be identical to original gallstone pain"},
+      {"condition": "Gall bladder polyps (adenomas)", "distinguishing_feature": "Polypoid cholesterolosis and adenomyomatosis may mimic adenomatous polyps; only reliable predictor of malignant risk is polyp size (>10 mm)"},
+      {"condition": "Carcinoma of the right side of colon", "distinguishing_feature": "May present with similar right upper quadrant pain and jaundice"},
+      {"condition": "Atypical peptic ulcer disease", "distinguishing_feature": "Epigastric pain may mimic biliary colic; responds to acid suppression"},
+      {"condition": "Renal colic", "distinguishing_feature": "Pain radiates differently (to groin rather than shoulder); associated with urinary symptoms"}
+    ],
+    "7_diagnostic_criteria": {
+      "criteria_name": "Clinical diagnosis guided by history and imaging findings, confirmed histologically",
+      "scoring_system": "Clinical diagnosis -- no specific scoring system; diagnosis is primarily clinical, guided by imaging findings and confirmed histologically",
+      "source_reference": "Page 744",
+      "criteria_list": ["Incidental finding during investigation for possible gallstone disease", "Evidence of diseased gall bladder wall on ultrasound scanning", "Hyperplasia of the mucosa with thickening of the muscle wall", "Multiple intramural diverticula (Rokitansky-Aschoff sinuses) on histopathology"]
+    },
+    "8_complications": [
+      {"complication": "Coexistence with gallstones (frequently coexist, particularly in segmental distribution)", "timing": "chronic", "frequency": "common"}
+    ],
+    "9_prevention": {
+      "primary_prevention": ["Maintain healthy weight and avoid obesity/metabolic syndrome", "Avoid rapid weight loss (which increases risk of cholesterol gallstones)", "Dietary modifications: high in fibre, low in animal fat/cholesterol"],
+      "secondary_prevention": ["Cholecystectomy when clinically indicated for symptomatic disease", "Observation for asymptomatic incidental findings"],
+      "screening": "Not routinely recommended; diagnosis guided by clinical features and ultrasound findings",
+      "vaccination": "Not applicable",
+      "source_reference": "Pages 736-740, 744"
+    },
+    "10_non_pharmacological_treatment": {
+      "lifestyle_modifications": ["Weight management (avoid obesity and rapid weight loss)", "Smoking cessation (independent risk factor for chronic pancreatitis and pancreatic cancer)"],
+      "dietary_changes": ["High-fibre, low-cholesterol diet", "Avoid high-fat meals which may precipitate biliary colic"],
+      "physical_activity": "Early mobilization after cholecystectomy (short period of ileus)",
+      "other": ["Observation for asymptomatic incidental findings", "Cholecystectomy when clinically indicated for symptomatic disease"],
+      "source_reference": "Pages 738-740, 742-744"
+    },
+    "11_pharmacological_treatment": {
+      "first_line": [
+        {"drug_class": "Ursodeoxycholic acid (bile salt)", "drug_name": "Oral ursodeoxycholic acid", "dose": "Not specified in text", "route": "Oral", "duration": "Long-term therapy required; high recurrence rate when stopped", "notes": "Solubilizes pure or near-pure cholesterol stones by increasing bile salt content of bile"},
+        {"drug_class": "Statins (HMG-CoA reductase inhibitors)", "drug_name": "Various statins", "dose": "Not specified in text", "route": "Oral", "duration": "Long-term", "notes": "Reduce cholesterol secretion into bile; promote gallstone dissolution"}
+      ],
+      "second_line": [
+        {"drug_class": "Ezetimibe (intestinal cholesterol absorption inhibitor)", "dose": "Not specified in text", "route": "Oral", "duration": "Long-term", "notes": "Suppresses uptake of dietary and biliary cholesterol across enterocyte brush border membrane"}
+      ],
+      "adjunct_therapy": [
+        {"drug_class": "Low-molecular-weight heparin (LMWH)", "dose": "Not specified in text", "route": "Subcutaneous", "duration": "Prophylaxis during hospitalization", "notes": "Prevention of deep vein thrombosis"}
+      ],
+      "drugs_to_avoid": [
+        {"drug_name": "Morphine and diamorphine", "notes": "Theoretical risk of exacerbating pancreatic ductal hypertension via sphincter of Oddi contraction; may worsen biliary/pancreatic pain"}
+      ],
+      "source_reference": "Pages 738, 740-742"
+    },
+    "12_interventional_treatment": [
+      {"procedure": "Laparoscopic cholecystectomy", "indication": "Treatment of choice for virtually all patients with symptomatic gall bladder stones; day-care procedure in elective setting", "timing": "Elective (minimize waiting time to avoid 30% recurrent symptoms over 4 months); during admission if specific complications present", "notes": "Replaced laparotomy approach. Mortality 0.2%. Complications: biliary leak, bile duct injury (up to 0.5%), especially with variant duct anatomy"},
+      {"procedure": "Open cholecystectomy", "indication": "Reserved for small proportion of patients with contraindications to laparoscopic approach", "timing": "Elective or urgent depending on clinical situation", "notes": "Contraindications: extensive previous upper abdominal surgery, ongoing bile duct obstruction, portal hypertension. 5% of laparoscopic cases converted"}
+    ]
+  },
+  "extraction_notes": "drugs_to_avoid entry uses 'notes' key (not 'reason') to match the importer's parsing logic, per a fix applied to a prior scenario's import.",
+  "missing_fields": ["Specific drug doses (not provided in source text)", "Vaccination recommendations (not applicable)", "Geographical prevalence (not specifically stated)"]
+}

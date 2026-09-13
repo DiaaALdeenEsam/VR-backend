@@ -19,6 +19,7 @@ app/api/error_handlers.py.
 from __future__ import annotations
 
 import logging
+import time
 
 import httpx
 
@@ -48,6 +49,9 @@ class ColabTTSAdapter(TextToSpeechPort):
 
         timeout = httpx.Timeout(self._settings.colab_api_timeout_seconds)
 
+        logger.info("[colab_tts] request_started | text_chars=%d", len(text))
+        start_time = time.monotonic()
+
         try:
             async with httpx.AsyncClient(
                 base_url=base_url, timeout=timeout, headers={"ngrok-skip-browser-warning": "true"}
@@ -72,4 +76,9 @@ class ColabTTSAdapter(TextToSpeechPort):
         if not audio_bytes:
             raise VoiceServiceUnavailableError(_SERVICE_NAME, "returned an empty audio response")
 
+        logger.info(
+            "[colab_tts] request_succeeded | duration_s=%.1f | audio_bytes=%d",
+            time.monotonic() - start_time,
+            len(audio_bytes),
+        )
         return audio_bytes

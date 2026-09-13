@@ -32,6 +32,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import tempfile
+import time
 from pathlib import Path
 from typing import Any
 
@@ -81,10 +82,13 @@ class LocalGpuSTTAdapter(SpeechToTextPort):
         if not audio_bytes:
             raise VoiceServiceUnavailableError(_SERVICE_NAME, "uploaded audio file is empty")
 
+        logger.info("[local_gpu_stt] inference_started | audio_bytes=%d", len(audio_bytes))
+        start_time = time.monotonic()
+
         try:
             transcript = await asyncio.to_thread(_transcribe_sync, self._model, audio_bytes, filename)
         except Exception as exc:
-            logger.exception("local whisper transcription failed")
+            logger.exception("[local_gpu_stt] inference_failed | duration_s=%.1f", time.monotonic() - start_time)
             raise VoiceServiceUnavailableError(_SERVICE_NAME, f"transcription failed: {exc}") from exc
 
         if not transcript:
@@ -92,4 +96,9 @@ class LocalGpuSTTAdapter(SpeechToTextPort):
                 _SERVICE_NAME, "transcription produced no text (silent or unrecognizable audio)"
             )
 
+        logger.info(
+            "[local_gpu_stt] inference_succeeded | duration_s=%.1f | transcript_chars=%d",
+            time.monotonic() - start_time,
+            len(transcript),
+        )
         return transcript

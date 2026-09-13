@@ -1,0 +1,102 @@
+{
+  "disease_name": "Acalculous cholecystitis",
+  "source": "Kumar and Clark Clinical Medicine 11th Ed 2025",
+  "chapter": "Chapter 24: Biliary tract and pancreatic disease",
+  "pages": "738-740, 743",
+  "fields": {
+    "1_pathophysiology": {
+      "definition": "Acalculous cholecystitis is a condition characterized by chronic inflammation within the gall bladder wall in the absence of gallstones. Almost 10% of gall bladders removed for biliary symptoms show this finding.",
+      "mechanism": "The pathogenesis involves several mechanisms: (1) Chemical inflammation from reflux of pancreatic enzymes back into the biliary tree, usually through the common channel at the ampulla of Vater; (2) Bacterial infections of the gall bladder; (3) Viral infections of the gall bladder. A distinct subtype characterized by severe necroinflammation occurs in elderly critically ill patients after major trauma or surgery.",
+      "classification": "Severe necroinflammatory subtype: occurs in elderly critically ill patients after major trauma or surgery, with around 20% developing inflammatory masses with subsequent cholestasis and jaundice.",
+      "source_reference": "Pages 738-740, 743"
+    },
+    "2_risk_factors": {
+      "modifiable": ["Major trauma", "Major surgery (post-operative state)", "Critical illness"],
+      "non_modifiable": ["Elderly age", "Pre-existing critical illness", "Ongoing sepsis", "Significant co-morbidity"],
+      "epidemiology": {
+        "age_group": "Elderly, critically ill patients (severe necroinflammatory subtype)",
+        "sex_predominance": "Not specifically stated for acalculous cholecystitis",
+        "geographical_prevalence": "Not specifically stated"
+      },
+      "source_reference": "Pages 738-740, 743"
+    },
+    "3_symptoms_and_signs": {
+      "cardinal_symptoms": ["Abdominal pain", "Cholestasis and jaundice (in around 20% of patients with inflammatory masses)"],
+      "other_symptoms": ["Fever", "Sepsis"],
+      "clinical_signs": {
+        "inspection": ["Jaundice (when cholestasis is present)", "Evidence of sepsis"],
+        "palpation": ["Right upper quadrant tenderness", "Palpable inflammatory mass"],
+        "percussion": ["Focal tenderness over gall bladder region"],
+        "auscultation": ["Reduced or absent bowel sounds in severe disease"]
+      },
+      "atypical_presentations": ["Non-specific symptoms in critically ill patients", "Only associated abnormal liver biochemistry may point to the diagnosis", "Silent presentation with cholestasis and jaundice"],
+      "source_reference": "Pages 738-740, 743"
+    },
+    "4_laboratory_investigations": [
+      {"test_name": "Liver biochemistry (bilirubin, alkaline phosphatase)", "expected_finding": "Cholestasis pattern with elevated bilirubin and alkaline phosphatase", "clinical_significance": "Points to the diagnosis when symptoms are non-specific in critically ill patients", "priority": "essential"},
+      {"test_name": "Full blood count (FBC)", "expected_finding": "Leucocytosis", "clinical_significance": "Supports diagnosis of acute cholecystitis; helps assess severity of sepsis", "priority": "essential"},
+      {"test_name": "C-reactive protein (CRP)", "expected_finding": "Raised inflammatory markers", "clinical_significance": "Useful for assessing disease severity and prognosis", "priority": "essential"},
+      {"test_name": "Blood cultures", "expected_finding": "May identify causative organisms (E. coli, Bacteroides fragilis, Klebsiella, Enterococcus, Pseudomonas)", "clinical_significance": "Guides antibiotic selection", "priority": "optional"}
+    ],
+    "5_radiological_investigations": [
+      {"modality": "Ultrasound scanning (transabdominal)", "expected_finding": "Evidence of diseased gall bladder wall; absence of gallstones", "clinical_significance": "Guides decision for cholecystectomy in the absence of gall bladder stones", "priority": "essential"},
+      {"modality": "CT scan (contrast-enhanced)", "expected_finding": "Inflammatory masses; gall bladder wall thickening", "clinical_significance": "Defines pathology when clinical situation fails to respond to conservative management", "priority": "confirmatory"},
+      {"modality": "Endoscopic ultrasound (EUS)", "expected_finding": "High-resolution imaging of gall bladder", "clinical_significance": "Enables LAMS placement to drain gall bladder empyema when surgery is not feasible", "priority": "confirmatory"}
+    ],
+    "6_differential_diagnosis": [
+      {"condition": "Acute cholecystitis (calculous)", "distinguishing_feature": "Presence of gallstones in 95% of cases"},
+      {"condition": "Ascending cholangitis", "distinguishing_feature": "Charcot's triad (biliary colic, fever, jaundice)"},
+      {"condition": "Gallstone-related pancreatitis", "distinguishing_feature": "Markedly elevated amylase/lipase"},
+      {"condition": "Perforated peptic ulceration", "distinguishing_feature": "Erect chest X-ray shows free gas under diaphragm"},
+      {"condition": "Intrahepatic abscess", "distinguishing_feature": "Imaging confirms fluid collection in liver"},
+      {"condition": "Basal pneumonia", "distinguishing_feature": "Respiratory symptoms and signs may mimic biliary disease"}
+    ],
+    "7_diagnostic_criteria": {
+      "criteria_name": "Clinical diagnosis guided by history and ultrasound findings",
+      "scoring_system": "Revised Atlanta criteria (2013) / Modified Marshall scoring system for organ failure severity",
+      "source_reference": "Pages 739-740, 743",
+      "criteria_list": ["Absence of defined gall bladder stones on imaging", "Evidence of diseased gall bladder wall on ultrasound scanning", "Specific features of clinical history (abdominal pain, fever, cholestasis)", "Inflammatory masses with subsequent cholestasis and jaundice in critically ill patients after major trauma or surgery"]
+    },
+    "8_complications": [
+      {"complication": "Gall bladder perforation", "timing": "subacute", "frequency": "uncommon"},
+      {"complication": "Cholestasis and jaundice", "timing": "subacute", "frequency": "uncommon"},
+      {"complication": "Sepsis", "timing": "acute", "frequency": "common"}
+    ],
+    "9_prevention": {
+      "primary_prevention": ["Aggressive management of sepsis with antibiotics", "Early identification of at-risk critically ill patients after major trauma or surgery"],
+      "secondary_prevention": ["Cholecystostomy (percutaneous gall bladder drainage) for temporizing measure in unfit patients", "Urgent cholecystectomy when clinically feasible"],
+      "screening": "Not routinely recommended; diagnosis guided by clinical features and ultrasound findings",
+      "vaccination": "Not applicable",
+      "source_reference": "Page 743"
+    },
+    "10_non_pharmacological_treatment": {
+      "lifestyle_modifications": ["Early identification of critically ill patients at risk"],
+      "dietary_changes": ["Nil by mouth initially in acute management", "Intravenous fluids administration"],
+      "physical_activity": "Mobilization as tolerated; early mobilization after cholecystectomy",
+      "other": ["Cholecystostomy (percutaneous gall bladder drainage) for unfit patients", "Urgent cholecystectomy when clinically feasible"],
+      "source_reference": "Page 743"
+    },
+    "11_pharmacological_treatment": {
+      "first_line": [
+        {"drug_class": "Antibiotics (for acute cholecystitis)", "drug_name": "Extended-spectrum cephalosporin (e.g., ceftriaxone) + metronidazole, OR piperacillin/tazobactam, OR imipenem/meropenem", "dose": "Not specified in text", "route": "Intravenous", "duration": "Guided by severity of sepsis and blood culture results", "notes": "Target organisms: E. coli, Bacteroides fragilis, Klebsiella, Enterococcus, Pseudomonas species"}
+      ],
+      "second_line": [
+        {"drug_class": "Antibiotics (alternative regimens)", "dose": "Not specified in text", "route": "Intravenous", "duration": "As guided by clinical response", "notes": "Selection dictated by local policy and severity of associated sepsis"}
+      ],
+      "adjunct_therapy": [
+        {"drug_class": "Low-molecular-weight heparin (LMWH)", "dose": "Not specified in text", "route": "Subcutaneous", "duration": "Prophylaxis during hospitalization", "notes": "Prevention of deep vein thrombosis"}
+      ],
+      "drugs_to_avoid": [
+        {"drug_name": "Morphine and diamorphine", "notes": "Theoretical risk of exacerbating pancreatic ductal hypertension via sphincter of Oddi contraction; may worsen biliary/pancreatic pain"}
+      ],
+      "source_reference": "Pages 738, 740-742"
+    },
+    "12_interventional_treatment": [
+      {"procedure": "Cholecystectomy (urgent)", "indication": "Severe necroinflammation of the gall bladder in critically ill patients after major trauma or surgery", "timing": "Urgent when clinically feasible", "notes": "Best option when patient is fit for surgery"},
+      {"procedure": "Cholecystostomy (percutaneous gall bladder drainage)", "indication": "Temporizing measure for empyema in critically ill patients", "timing": "Urgent when conservative management fails", "notes": "Best option for patients unfit for early surgery due to ongoing sepsis or comorbidity"},
+      {"procedure": "EUS-guided LAMS placement", "indication": "Drain gall bladder empyema when surgery is not feasible", "timing": "Urgent in selected cases", "notes": "Stent placed between obstructed gall bladder and stomach or duodenum"}
+    ]
+  },
+  "extraction_notes": "Focused on the severe necroinflammatory subtype (elderly, critically ill, post-trauma/surgery) per project decision; chronic/minor acalculous cholecystitis findings not emphasized. drugs_to_avoid entries use 'notes' key (not 'reason') to match the importer's parsing logic.",
+  "missing_fields": ["Specific drug doses (not provided in source text)", "Vaccination recommendations (not applicable)", "Sex predominance (not specifically stated)"]
+}

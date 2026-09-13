@@ -33,6 +33,7 @@ dead code left over from a removed toggle.
 from __future__ import annotations
 
 import base64
+import logging
 
 from fastapi import APIRouter, Depends, File, UploadFile, WebSocket, WebSocketDisconnect
 
@@ -51,6 +52,7 @@ from app.domain.exceptions import DomainError, SessionBusyError
 from app.infrastructure.ws_hub import WebSocketPushHub
 
 router = APIRouter(tags=["voice"])
+logger = logging.getLogger(__name__)
 
 
 @router.post("/transcribe", response_model=TranscribeResponse)
@@ -147,9 +149,12 @@ async def voice_websocket(
 
     session_id = websocket.query_params.get("session_id")
     if not session_id:
+        logger.warning("[voice_ws] connection_rejected | reason=missing_session_id")
         await websocket.send_json({"type": "error", "detail": "missing session_id query parameter"})
         await websocket.close(code=4400)
         return
+
+    logger.info("[voice_ws] connection_opened | session_id=%s", session_id)
 
     # Registered for the whole connection lifetime, not just around one
     # execute() call -- a background task from an *earlier* frame on this
@@ -164,9 +169,13 @@ async def voice_websocket(
             try:
                 result = await use_case.execute(session_id, audio_bytes)
             except SessionBusyError as exc:
+                logger.warning("[voice_ws] session_busy | session_id=%s | error=%s", session_id, exc)
                 await websocket.send_json({"type": "error", "code": "session_busy", "detail": str(exc)})
                 continue
             except DomainError as exc:
+                logger.error(
+                    "[voice_ws] connection_closed_on_error | session_id=%s | error=%s", session_id, exc
+                )
                 await websocket.send_json({"type": "error", "detail": str(exc)})
                 await websocket.close(code=4400)
                 return
@@ -190,6 +199,6 @@ async def voice_websocket(
             # connection, once PostMessageAsyncUseCase's background phase
             # finishes (see that class and app/infrastructure/ws_hub.py).
     except WebSocketDisconnect:
-        pass
+        logger.info("[voice_ws] connection_disconnected | session_id=%s", session_id)
     finally:
         hub.unregister(session_id, websocket)

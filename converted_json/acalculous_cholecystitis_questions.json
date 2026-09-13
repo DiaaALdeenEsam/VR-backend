@@ -1,0 +1,29 @@
+[
+  {
+    "text": "A 78-year-old man develops fever, right upper quadrant tenderness, and rising bilirubin one week after major abdominal trauma surgery, with no gallstones seen on ultrasound. What is the most appropriate first-line imaging investigation?",
+    "choices": [
+      {"text": "Transabdominal ultrasound", "correct": true},
+      {"text": "Plain abdominal X-ray", "correct": false},
+      {"text": "Oral cholecystogram", "correct": false},
+      {"text": "MRI of the abdomen", "correct": false}
+    ]
+  },
+  {
+    "text": "Which analgesic should be avoided in a patient with suspected acalculous cholecystitis due to a theoretical risk of worsening biliary/pancreatic pain?",
+    "choices": [
+      {"text": "Morphine", "correct": true},
+      {"text": "Paracetamol", "correct": false},
+      {"text": "Ibuprofen", "correct": false},
+      {"text": "Local anaesthetic infiltration", "correct": false}
+    ]
+  },
+  {
+    "text": "A critically ill, septic patient with acalculous cholecystitis is deemed unfit for immediate surgery. What is the most appropriate temporizing intervention?",
+    "choices": [
+      {"text": "Percutaneous cholecystostomy", "correct": true},
+      {"text": "Urgent open cholecystectomy", "correct": false},
+      {"text": "Watchful waiting with oral antibiotics only", "correct": false},
+      {"text": "ERCP with sphincterotomy", "correct": false}
+    ]
+  }
+]

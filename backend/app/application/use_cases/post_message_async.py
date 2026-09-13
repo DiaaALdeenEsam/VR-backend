@@ -57,6 +57,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from collections.abc import Callable
 
 from app.application.use_cases.post_message import retrieve_evidence_or_empty
@@ -119,6 +120,8 @@ class PostMessageAsyncUseCase:
         if self._concurrency_guard.is_busy(session_id):
             raise SessionBusyError(session_id)
 
+        logger.info("[post_message] flow_started | session_id=%s", session_id)
+
         async with self._uow_factory() as uow:
             session = await uow.sessions.get(session_id)
             if session is None:
@@ -143,6 +146,11 @@ class PostMessageAsyncUseCase:
             await uow.commit()
 
         assert placeholder.id is not None
+        logger.info(
+            "[post_message] user_message_persisted | session_id=%s | message_id=%s",
+            session_id,
+            placeholder.id,
+        )
         # Registered *before* returning, so a second POST arriving the instant
         # after this call returns still sees is_busy() == True -- no window
         # where two calls could both pass the check above.
@@ -150,72 +158,131 @@ class PostMessageAsyncUseCase:
         return placeholder
 
     async def _generate_and_push(self, session_id: str, message_id: int, user_content: str) -> None:
-        async with self._uow_factory() as uow:
-            row = await uow.messages.update_content(message_id, _PENDING_PLACEHOLDER_TEXT, status="generating")
-            history = [m for m in await uow.messages.list_by_session(session_id) if m.id != message_id]
-            session = await uow.sessions.get(session_id)
-            assert session is not None  # existed moments ago in execute(); not deleted mid-flight in this app
-            scenario = await uow.scenarios.get(session.scenario_id)
-            assert scenario is not None
-            await uow.commit()
-        del row  # only needed to move the row to "generating"; not read again here
-
-        filler_task = asyncio.create_task(self._push_filler_after_delay(session_id, message_id))
-        failed = False
-        reply_text = self._settings.rag_patient_fallback_reply
-
+        start_time = time.monotonic()
         try:
-            evidence = await retrieve_evidence_or_empty(self._evidence_retriever, user_content)
-            reply_text = await asyncio.wait_for(
-                self._reply_generator.generate_reply(scenario, history, user_content, evidence),
-                timeout=self._settings.rag_patient_hard_timeout_seconds,
-            )
-        except asyncio.TimeoutError:
-            logger.warning(
-                "reply generation for session_id=%s message_id=%s exceeded %.0fs -- falling back",
+            async with self._uow_factory() as uow:
+                row = await uow.messages.update_content(message_id, _PENDING_PLACEHOLDER_TEXT, status="generating")
+                history = [m for m in await uow.messages.list_by_session(session_id) if m.id != message_id]
+                session = await uow.sessions.get(session_id)
+                assert session is not None  # existed moments ago in execute(); not deleted mid-flight in this app
+                scenario = await uow.scenarios.get(session.scenario_id)
+                assert scenario is not None
+                await uow.commit()
+            del row  # only needed to move the row to "generating"; not read again here
+
+            filler_task = asyncio.create_task(self._push_filler_after_delay(session_id, message_id))
+            failed = False
+            reply_text = self._settings.rag_patient_fallback_reply
+
+            logger.info(
+                "[post_message] calling_rag_patient_api | session_id=%s | message_id=%s",
                 session_id,
                 message_id,
-                self._settings.rag_patient_hard_timeout_seconds,
             )
-            failed = True
-            reply_text = self._settings.rag_patient_fallback_reply
-        except RagServiceUnavailableError as exc:
-            logger.warning(
-                "reply generation for session_id=%s message_id=%s failed: %s -- falling back",
-                session_id,
-                message_id,
-                exc,
-            )
-            failed = True
-            reply_text = self._settings.rag_patient_fallback_reply
-        finally:
-            filler_task.cancel()
-
-        async with self._uow_factory() as uow:
-            final = await uow.messages.update_content(
-                message_id, reply_text, status="failed" if failed else "complete"
-            )
-            await uow.commit()
-
-        await self._push_port.push(
-            session_id,
-            {
-                "type": "reply",
-                "id": final.id,
-                "role": final.role,
-                "content": final.content,
-                "status": final.status,
-                "created_at": final.created_at.isoformat(),
-            },
-        )
-
-        if not failed and self._text_to_speech is not None:
             try:
-                audio = await self._text_to_speech.synthesize(final.content)
-            except Exception:
-                logger.warning("TTS synthesis failed for session_id=%s message_id=%s", session_id, message_id)
-            else:
-                await self._push_port.push_bytes(session_id, audio)
+                evidence = await retrieve_evidence_or_empty(self._evidence_retriever, user_content)
+                reply_text = await asyncio.wait_for(
+                    self._reply_generator.generate_reply(scenario, history, user_content, evidence),
+                    timeout=self._settings.rag_patient_hard_timeout_seconds,
+                )
+                logger.info(
+                    "[post_message] rag_patient_reply_received | session_id=%s | message_id=%s | duration_s=%.1f",
+                    session_id,
+                    message_id,
+                    time.monotonic() - start_time,
+                )
+            except asyncio.TimeoutError:
+                logger.warning(
+                    "[post_message] rag_patient_timeout | session_id=%s | message_id=%s | "
+                    "timeout_s=%.0f -- falling back to fixed reply",
+                    session_id,
+                    message_id,
+                    self._settings.rag_patient_hard_timeout_seconds,
+                )
+                failed = True
+                reply_text = self._settings.rag_patient_fallback_reply
+            except RagServiceUnavailableError as exc:
+                logger.warning(
+                    "[post_message] rag_patient_unavailable | session_id=%s | message_id=%s | "
+                    "error=%s -- falling back to fixed reply",
+                    session_id,
+                    message_id,
+                    exc,
+                )
+                failed = True
+                reply_text = self._settings.rag_patient_fallback_reply
+            finally:
+                filler_task.cancel()
+
+            async with self._uow_factory() as uow:
+                final = await uow.messages.update_content(
+                    message_id, reply_text, status="failed" if failed else "complete"
+                )
+                await uow.commit()
+            logger.info(
+                "[post_message] reply_persisted | session_id=%s | message_id=%s | status=%s",
+                session_id,
+                message_id,
+                final.status,
+            )
+
+            delivered = await self._push_port.push(
+                session_id,
+                {
+                    "type": "reply",
+                    "id": final.id,
+                    "role": final.role,
+                    "content": final.content,
+                    "status": final.status,
+                    "created_at": final.created_at.isoformat(),
+                },
+            )
+            logger.info(
+                "[post_message] pushed_via_websocket | session_id=%s | message_id=%s | delivered=%s",
+                session_id,
+                message_id,
+                delivered,
+            )
+
+            if not failed and self._text_to_speech is not None:
+                logger.info(
+                    "[post_message] tts_started | session_id=%s | message_id=%s",
+                    session_id,
+                    message_id,
+                )
+                try:
+                    audio = await self._text_to_speech.synthesize(final.content)
+                except Exception:
+                    logger.warning(
+                        "[post_message] tts_failed | session_id=%s | message_id=%s -- reply delivered without audio",
+                        session_id,
+                        message_id,
+                    )
+                else:
+                    logger.info(
+                        "[post_message] tts_completed | session_id=%s | message_id=%s | audio_bytes=%d",
+                        session_id,
+                        message_id,
+                        len(audio),
+                    )
+                    await self._push_port.push_bytes(session_id, audio)
+
+            logger.info(
+                "[post_message] flow_completed | session_id=%s | message_id=%s | status=%s | duration_s=%.1f",
+                session_id,
+                message_id,
+                final.status,
+                time.monotonic() - start_time,
+            )
+        except Exception:
+            logger.error(
+                "[post_message] flow_failed | session_id=%s | message_id=%s | duration_s=%.1f",
+                session_id,
+                message_id,
+                time.monotonic() - start_time,
+                exc_info=True,
+            )
+            raise
 
     async def _push_filler_after_delay(self, session_id: str, message_id: int) -> None:
         """Interim "still thinking" signal if the real reply isn't back yet by
@@ -224,4 +291,10 @@ class PostMessageAsyncUseCase:
         that could contradict or duplicate the eventual real reply."""
 
         await asyncio.sleep(self._settings.rag_patient_filler_after_seconds)
+        logger.warning(
+            "[post_message] still_generating_filler_sent | session_id=%s | message_id=%s | after_s=%.0f",
+            session_id,
+            message_id,
+            self._settings.rag_patient_filler_after_seconds,
+        )
         await self._push_port.push(session_id, {"type": "thinking", "id": message_id})

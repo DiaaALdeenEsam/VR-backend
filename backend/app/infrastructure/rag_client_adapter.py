@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 
 import httpx
 
@@ -141,6 +142,9 @@ class RagClientAdapter(EvidenceRetriever):
         max_attempts = max(1, self._settings.rag_api_max_attempts)
         response: httpx.Response | None = None
 
+        logger.info("[rag_retrieval] request_started | top_k=%d", top_k)
+        start_time = time.monotonic()
+
         for attempt in range(1, max_attempts + 1):
             try:
                 async with httpx.AsyncClient(
@@ -148,13 +152,18 @@ class RagClientAdapter(EvidenceRetriever):
                 ) as client:
                     response = await client.post("/v1/rag/query", json=body)
             except httpx.TimeoutException as exc:
-                logger.warning("RAG API request timed out")
+                logger.warning("[rag_retrieval] request_timeout | attempt=%d/%d", attempt, max_attempts)
                 raise RagServiceUnavailableError(_SERVICE_NAME, "request timed out") from exc
             except httpx.RequestError as exc:
                 # Log only the exception's type/class, never str(exc) -- httpx request
                 # errors can embed the request URL (which may carry query params) and,
                 # in some cases, echo back parts of the request; keep this generic.
-                logger.warning("RAG API request failed: %s", type(exc).__name__)
+                logger.warning(
+                    "[rag_retrieval] request_error | attempt=%d/%d | error_type=%s",
+                    attempt,
+                    max_attempts,
+                    type(exc).__name__,
+                )
                 raise RagServiceUnavailableError(_SERVICE_NAME, "connection failed") from exc
 
             if response.status_code == 200:
@@ -163,7 +172,7 @@ class RagClientAdapter(EvidenceRetriever):
             if response.status_code == 503 and attempt < max_attempts:
                 backoff_seconds = self._settings.rag_api_retry_backoff_seconds * (2 ** (attempt - 1))
                 logger.warning(
-                    "RAG API returned HTTP 503 (attempt %d/%d) -- retrying in %.1fs",
+                    "[rag_retrieval] retrying | attempt=%d/%d | backoff_s=%.1f",
                     attempt,
                     max_attempts,
                     backoff_seconds,
@@ -171,14 +180,21 @@ class RagClientAdapter(EvidenceRetriever):
                 await _backoff_sleep(backoff_seconds)
                 continue
 
-            logger.warning("RAG API returned HTTP %s", response.status_code)
+            logger.warning("[rag_retrieval] request_failed | http_status=%s", response.status_code)
             raise RagServiceUnavailableError(_SERVICE_NAME, f"returned HTTP {response.status_code}")
 
         assert response is not None  # the loop above always either breaks or raises
 
         try:
             payload = response.json()
-            return _parse_evidence(payload)
+            evidence = _parse_evidence(payload)
         except (ValueError, KeyError, TypeError) as exc:
-            logger.warning("RAG API returned an unexpected response body")
+            logger.warning("[rag_retrieval] unexpected_response_body")
             raise RagServiceUnavailableError(_SERVICE_NAME, "response body was not in the expected shape") from exc
+
+        logger.info(
+            "[rag_retrieval] request_succeeded | duration_s=%.1f | evidence_count=%d",
+            time.monotonic() - start_time,
+            len(evidence),
+        )
+        return evidence

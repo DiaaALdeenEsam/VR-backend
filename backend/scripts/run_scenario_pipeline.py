@@ -43,6 +43,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import logging
 import subprocess
 import sys
 import tempfile
@@ -65,6 +66,8 @@ from app.infrastructure.db.models import (
     TestModel,
 )
 from scripts.import_scenario_from_json import _clean, import_scenario
+
+logger = logging.getLogger(__name__)
 
 BACKEND_DIR = Path(__file__).resolve().parent.parent
 
@@ -108,6 +111,7 @@ class E2EStepFailed(Exception):
 
 async def step_import(session, state: PipelineState, data: dict) -> int:
     disease_name = _clean(data.get("disease_name")) or "Untitled scenario"
+    logger.info("[scenario_pipeline] step_started | step=1_import | disease_name=%s", disease_name)
 
     result = await session.exec(select(ScenarioModel).where(ScenarioModel.name == disease_name))
     existing = result.one_or_none()
@@ -115,6 +119,7 @@ async def step_import(session, state: PipelineState, data: dict) -> int:
     if existing is not None:
         assert existing.id is not None
         print(f"[1/6] IMPORT: already imported, reusing id={existing.id} (name={existing.name!r})")
+        logger.info("[scenario_pipeline] step_completed | step=1_import | action=reused | scenario_id=%s", existing.id)
         await _print_patient_profile(session, existing.id, source="stored row (existing scenario)")
         state.record("1. import", "reused", "pass", f"scenario_id={existing.id}")
         return existing.id
@@ -123,6 +128,9 @@ async def step_import(session, state: PipelineState, data: dict) -> int:
     await session.commit()
     assert scenario.id is not None
 
+    logger.info(
+        "[scenario_pipeline] step_completed | step=1_import | action=imported | scenario_id=%s", scenario.id
+    )
     print(f"[1/6] IMPORT: imported new scenario id={scenario.id} (name={scenario.name!r})")
     print("       patient_profile -- parsed to concrete values:")
     for line in parsed_fields or ["  (none)"]:
@@ -158,8 +166,11 @@ async def step_gold_standard(session, state: PipelineState, scenario_id: int, go
     scenario = await session.get(ScenarioModel, scenario_id)
     assert scenario is not None
 
+    logger.info("[scenario_pipeline] step_started | step=2_gold_standard | scenario_id=%s", scenario_id)
+
     if scenario.gold_standard:
         print(f"[2/6] GOLD STANDARD: already set ({len(scenario.gold_standard)} chars) -- skipping")
+        logger.info("[scenario_pipeline] step_completed | step=2_gold_standard | action=skipped_already_set")
         state.record("2. gold_standard", "skipped", "pass", f"{len(scenario.gold_standard)} chars")
         return
 
@@ -167,6 +178,10 @@ async def step_gold_standard(session, state: PipelineState, scenario_id: int, go
         print(
             "[2/6] GOLD STANDARD: not set, and no --gold-standard/--gold-standard-file given -- "
             "skipping (note: /sessions/{id}/evaluate will 400 for this scenario until it's set)"
+        )
+        logger.warning(
+            "[scenario_pipeline] step_completed | step=2_gold_standard | action=skipped_no_input -- "
+            "evaluate will 400 for this scenario"
         )
         state.record("2. gold_standard", "skipped (no input)", "n/a")
         return
@@ -179,6 +194,7 @@ async def step_gold_standard(session, state: PipelineState, scenario_id: int, go
     await session.refresh(scenario)
     assert scenario.gold_standard == gold_standard
     print(f"[2/6] GOLD STANDARD: set and verified by re-query ({len(scenario.gold_standard)} chars)")
+    logger.info("[scenario_pipeline] step_completed | step=2_gold_standard | action=set")
     state.record("2. gold_standard", "set", "pass", f"{len(scenario.gold_standard)} chars")
 
 
@@ -191,8 +207,11 @@ async def step_quiz(
     """Returns [(question_id, correct_choice_id), ...] for every question now on
     file for this scenario (both pre-existing and newly inserted this run)."""
 
+    logger.info("[scenario_pipeline] step_started | step=3_quiz_seeding | scenario_id=%s", scenario_id)
+
     if questions_data is None:
         print("[3/6] QUIZ SEEDING: no --questions file given -- skipping")
+        logger.info("[scenario_pipeline] step_completed | step=3_quiz_seeding | action=skipped_no_input")
         state.record("3. quiz_seeding", "skipped (no input)", "n/a")
         return await _existing_questions(session, scenario_id)
 
@@ -233,6 +252,11 @@ async def step_quiz(
 
     await session.commit()
 
+    logger.info(
+        "[scenario_pipeline] step_completed | step=3_quiz_seeding | inserted=%d | skipped=%d",
+        len(inserted),
+        len(skipped),
+    )
     print(f"[3/6] QUIZ SEEDING: {len(inserted)} inserted, {len(skipped)} skipped as duplicates")
     for qid, text in inserted:
         print(f"       INSERT  id={qid}  {text[:70]}{'...' if len(text) > 70 else ''}")
@@ -260,6 +284,7 @@ async def _existing_questions(session, scenario_id: int) -> list[tuple[int, int]
 
 
 async def step_tests_baseline(session, state: PipelineState) -> None:
+    logger.info("[scenario_pipeline] step_started | step=4_tests_baseline")
     tests_count = (await session.exec(select(func.count()).select_from(TestModel))).one()
     categories_count = (await session.exec(select(func.count()).select_from(TestCategoryModel))).one()
 
@@ -272,6 +297,12 @@ async def step_tests_baseline(session, state: PipelineState) -> None:
         tests_count = (await session.exec(select(func.count()).select_from(TestModel))).one()
         categories_count = (await session.exec(select(func.count()).select_from(TestCategoryModel))).one()
         print(f"       after seeding: test_categories={categories_count}, tests={tests_count}")
+        logger.info(
+            "[scenario_pipeline] step_completed | step=4_tests_baseline | action=seeded | "
+            "test_categories=%d | tests=%d",
+            categories_count,
+            tests_count,
+        )
         state.record(
             "4. tests_baseline", "seeded", "pass", f"test_categories={categories_count}, tests={tests_count}"
         )
@@ -279,6 +310,9 @@ async def step_tests_baseline(session, state: PipelineState) -> None:
         print(
             f"[4/6] TESTS BASELINE: already populated "
             f"(test_categories={categories_count}, tests={tests_count}) -- skipping"
+        )
+        logger.info(
+            "[scenario_pipeline] step_completed | step=4_tests_baseline | action=skipped_already_populated"
         )
         state.record(
             "4. tests_baseline", "skipped", "pass", f"test_categories={categories_count}, tests={tests_count}"
@@ -299,6 +333,11 @@ def _assert(condition: bool, message: str, response: httpx.Response | None = Non
             print(f"    body:     {response.request.content!r}")
         print(f"    status:   {response.status_code}")
         print(f"    response: {response.text}")
+    logger.error(
+        "[scenario_pipeline] e2e_assertion_failed | message=%s%s",
+        message,
+        f" | http_status={response.status_code}" if response is not None else "",
+    )
     raise E2EStepFailed(message)
 
 
@@ -388,14 +427,21 @@ async def step_e2e(
     server_process: subprocess.Popen | None = None
     log_path: Path | None = None
 
+    logger.info("[scenario_pipeline] step_started | step=5_live_e2e | scenario_id=%s", scenario_id)
+    step_start_time = time.monotonic()
+
     async with httpx.AsyncClient(base_url=base_url, timeout=120.0) as probe:
         already_running = await _wait_for_health(probe, timeout=2.0)
 
     if already_running:
         print(f"[5/6] LIVE E2E: server already running at {base_url} -- reusing it")
+        logger.info("[scenario_pipeline] server_reused | base_url=%s", base_url)
         server_started_by_us = False
     else:
         print(f"[5/6] LIVE E2E: starting app on {base_url} ...")
+        logger.warning(
+            "[scenario_pipeline] server_not_running | base_url=%s -- starting a new instance", base_url
+        )
         log_file = tempfile.NamedTemporaryFile(
             mode="w", suffix=".log", prefix="run_scenario_pipeline_", delete=False
         )
@@ -415,10 +461,12 @@ async def step_e2e(
             log_text = log_path.read_text(encoding="utf-8", errors="replace") if log_path.exists() else ""
             print("       server did not become healthy in time. Log:")
             print(log_text[-3000:])
+            logger.error("[scenario_pipeline] step_failed | step=5_live_e2e | reason=server_never_became_healthy")
             _cleanup_server(server_process, log_path)
             state.record("5. live_e2e", "failed to start", "fail")
             raise E2EStepFailed("server never became healthy")
         print("       server is healthy")
+        logger.info("[scenario_pipeline] server_healthy | base_url=%s", base_url)
 
     try:
         async with httpx.AsyncClient(base_url=base_url, timeout=120.0) as client:
@@ -535,8 +583,18 @@ async def step_e2e(
             )
 
         state.record("5. live_e2e", "ran fresh", "pass", f"session_id={session_id}")
+        logger.info(
+            "[scenario_pipeline] step_completed | step=5_live_e2e | session_id=%s | duration_s=%.1f",
+            session_id,
+            time.monotonic() - step_start_time,
+        )
 
-    except E2EStepFailed:
+    except E2EStepFailed as exc:
+        logger.error(
+            "[scenario_pipeline] step_failed | step=5_live_e2e | error=%s | duration_s=%.1f",
+            exc,
+            time.monotonic() - step_start_time,
+        )
         state.record("5. live_e2e", "ran fresh", "fail")
         raise
     finally:
@@ -601,6 +659,9 @@ async def run(args: argparse.Namespace) -> int:
     gold_standard = _load_gold_standard_arg(args.gold_standard, args.gold_standard_file)
     questions_data = _load_questions_arg(args.questions)
 
+    logger.info("[scenario_pipeline] flow_started | json_path=%s", args.json_path)
+    pipeline_start_time = time.monotonic()
+
     settings = get_settings()
     engine = create_engine_from_settings(settings)
     session_factory = create_session_factory(engine)
@@ -623,6 +684,12 @@ async def run(args: argparse.Namespace) -> int:
     finally:
         await engine.dispose()
         state.print_summary()
+
+    duration_s = time.monotonic() - pipeline_start_time
+    if exit_code == 0:
+        logger.info("[scenario_pipeline] flow_completed | duration_s=%.1f", duration_s)
+    else:
+        logger.error("[scenario_pipeline] flow_failed | duration_s=%.1f", duration_s)
 
     return exit_code
 

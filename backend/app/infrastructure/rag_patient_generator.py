@@ -39,6 +39,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 
 import httpx
 
@@ -139,6 +140,9 @@ class RagPatientReplyGenerator(PatientReplyGenerator):
         max_attempts = max(1, self._settings.rag_api_max_attempts)
         response: httpx.Response | None = None
 
+        logger.info("[rag_patient] request_started | persona=%s", self._settings.rag_patient_persona)
+        start_time = time.monotonic()
+
         for attempt in range(1, max_attempts + 1):
             try:
                 async with httpx.AsyncClient(
@@ -146,10 +150,15 @@ class RagPatientReplyGenerator(PatientReplyGenerator):
                 ) as client:
                     response = await client.post("/v1/rag/patient/chat", json=body)
             except httpx.TimeoutException as exc:
-                logger.warning("RAG patient-chat request timed out")
+                logger.warning("[rag_patient] request_timeout | attempt=%d/%d", attempt, max_attempts)
                 raise RagServiceUnavailableError(_SERVICE_NAME, "request timed out") from exc
             except httpx.RequestError as exc:
-                logger.warning("RAG patient-chat request failed: %s", type(exc).__name__)
+                logger.warning(
+                    "[rag_patient] request_error | attempt=%d/%d | error_type=%s",
+                    attempt,
+                    max_attempts,
+                    type(exc).__name__,
+                )
                 raise RagServiceUnavailableError(_SERVICE_NAME, "connection failed") from exc
 
             if response.status_code == 200:
@@ -164,7 +173,7 @@ class RagPatientReplyGenerator(PatientReplyGenerator):
             if response.status_code == 503 and code in _RETRYABLE_ERROR_CODES and attempt < max_attempts:
                 backoff_seconds = self._settings.rag_api_retry_backoff_seconds * (2 ** (attempt - 1))
                 logger.warning(
-                    "RAG patient-chat returned %s (attempt %d/%d) -- retrying in %.1fs",
+                    "[rag_patient] retrying | code=%s | attempt=%d/%d | backoff_s=%.1f",
                     code,
                     attempt,
                     max_attempts,
@@ -173,14 +182,23 @@ class RagPatientReplyGenerator(PatientReplyGenerator):
                 await _backoff_sleep(backoff_seconds)
                 continue
 
-            logger.warning("RAG patient-chat returned HTTP %s (code=%s)", response.status_code, code)
+            logger.warning(
+                "[rag_patient] request_failed | http_status=%s | code=%s", response.status_code, code
+            )
             raise RagServiceUnavailableError(_SERVICE_NAME, f"returned HTTP {response.status_code} ({code})")
 
         assert response is not None
 
         try:
             payload = response.json()
-            return payload["choices"][0]["message"]["content"]
+            content = payload["choices"][0]["message"]["content"]
         except (ValueError, KeyError, IndexError, TypeError) as exc:
-            logger.warning("RAG patient-chat returned an unexpected response body")
+            logger.warning("[rag_patient] unexpected_response_body")
             raise RagServiceUnavailableError(_SERVICE_NAME, "response body was not in the expected shape") from exc
+
+        logger.info(
+            "[rag_patient] request_succeeded | duration_s=%.1f | reply_chars=%d",
+            time.monotonic() - start_time,
+            len(content),
+        )
+        return content

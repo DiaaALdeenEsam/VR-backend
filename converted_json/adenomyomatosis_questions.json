@@ -1,0 +1,29 @@
+[
+  {
+    "text": "An asymptomatic 55-year-old undergoing ultrasound for unrelated reasons is found to have gall bladder wall thickening with intramural diverticula (Rokitansky-Aschoff sinuses), no gallstones. What is the most appropriate next step?",
+    "choices": [
+      {"text": "Reassurance and observation, no treatment needed", "correct": true},
+      {"text": "Urgent cholecystectomy", "correct": false},
+      {"text": "Start high-dose statins", "correct": false},
+      {"text": "Refer for oncology workup", "correct": false}
+    ]
+  },
+  {
+    "text": "Which imaging finding is most specific for confirming a diagnosis of adenomyomatosis over simple cholelithiasis?",
+    "choices": [
+      {"text": "Intramural diverticula (Rokitansky-Aschoff sinuses) on ultrasound/CT", "correct": true},
+      {"text": "Presence of any gallstone", "correct": false},
+      {"text": "Elevated CRP", "correct": false},
+      {"text": "Elevated bilirubin alone", "correct": false}
+    ]
+  },
+  {
+    "text": "A patient with segmental adenomyomatosis and coexisting symptomatic gallstones is being counselled about disease relationship. What should they be told?",
+    "choices": [
+      {"text": "The two conditions frequently coexist but no proven causal relationship exists between them", "correct": true},
+      {"text": "Adenomyomatosis definitely causes gallstone formation", "correct": false},
+      {"text": "Gallstones always cause adenomyomatosis", "correct": false},
+      {"text": "The two conditions are never seen together", "correct": false}
+    ]
+  }
+]

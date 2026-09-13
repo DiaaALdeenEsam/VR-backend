@@ -35,6 +35,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 
 import httpx
 
@@ -156,6 +157,9 @@ class RagLlmEvaluator(EvaluationGenerator):
         max_attempts = max(1, self._settings.rag_api_max_attempts)
         response: httpx.Response | None = None
 
+        logger.info("[rag_evaluator] request_started")
+        start_time = time.monotonic()
+
         for attempt in range(1, max_attempts + 1):
             try:
                 async with httpx.AsyncClient(
@@ -163,10 +167,15 @@ class RagLlmEvaluator(EvaluationGenerator):
                 ) as client:
                     response = await client.post("/v1/rag/chat", json=body)
             except httpx.TimeoutException as exc:
-                logger.warning("RAG chat (evaluation) request timed out")
+                logger.warning("[rag_evaluator] request_timeout | attempt=%d/%d", attempt, max_attempts)
                 raise RagServiceUnavailableError(_SERVICE_NAME, "request timed out") from exc
             except httpx.RequestError as exc:
-                logger.warning("RAG chat (evaluation) request failed: %s", type(exc).__name__)
+                logger.warning(
+                    "[rag_evaluator] request_error | attempt=%d/%d | error_type=%s",
+                    attempt,
+                    max_attempts,
+                    type(exc).__name__,
+                )
                 raise RagServiceUnavailableError(_SERVICE_NAME, "connection failed") from exc
 
             if response.status_code == 200:
@@ -181,7 +190,7 @@ class RagLlmEvaluator(EvaluationGenerator):
             if response.status_code == 503 and code in _RETRYABLE_ERROR_CODES and attempt < max_attempts:
                 backoff_seconds = self._settings.rag_api_retry_backoff_seconds * (2 ** (attempt - 1))
                 logger.warning(
-                    "RAG chat (evaluation) returned %s (attempt %d/%d) -- retrying in %.1fs",
+                    "[rag_evaluator] retrying | code=%s | attempt=%d/%d | backoff_s=%.1f",
                     code,
                     attempt,
                     max_attempts,
@@ -190,7 +199,7 @@ class RagLlmEvaluator(EvaluationGenerator):
                 await _backoff_sleep(backoff_seconds)
                 continue
 
-            logger.warning("RAG chat (evaluation) returned HTTP %s (code=%s)", response.status_code, code)
+            logger.warning("[rag_evaluator] request_failed | http_status=%s | code=%s", response.status_code, code)
             raise RagServiceUnavailableError(_SERVICE_NAME, f"returned HTTP {response.status_code} ({code})")
 
         assert response is not None
@@ -199,18 +208,20 @@ class RagLlmEvaluator(EvaluationGenerator):
             payload = response.json()
             raw_content = payload["choices"][0]["message"]["content"]
         except (ValueError, KeyError, IndexError, TypeError) as exc:
-            logger.warning("RAG chat (evaluation) returned an unexpected response body")
+            logger.warning("[rag_evaluator] unexpected_response_body")
             raise RagServiceUnavailableError(_SERVICE_NAME, "response body was not in the expected shape") from exc
 
         try:
             parsed = parse_llm_evaluation(raw_content)
         except ValueError as exc:
             logger.error(
-                "RAG chat (evaluation) returned unparseable JSON (%s); raw content: %r",
+                "[rag_evaluator] unparseable_evaluation_json | error=%s | raw_content=%r",
                 exc,
                 raw_content[:_RAW_RESPONSE_LOG_CHARS],
             )
             raise RagServiceUnavailableError(_SERVICE_NAME, f"response was not valid evaluation JSON: {exc}") from exc
+
+        logger.info("[rag_evaluator] request_succeeded | duration_s=%.1f", time.monotonic() - start_time)
 
         conversation_pct, conversation_feedback = parsed["conversation"]
         test_ordering_pct, test_ordering_feedback = parsed["test_ordering"]

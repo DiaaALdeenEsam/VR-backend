@@ -244,7 +244,17 @@ class PostMessageAsyncUseCase:
                 delivered,
             )
 
-            if not failed and self._text_to_speech is not None:
+            # Synthesize audio for BOTH a real reply and the fixed fallback
+            # line -- not gated on `failed`. The fallback text is fixed and
+            # known in advance (Settings.rag_patient_fallback_reply), so
+            # synthesizing it costs no more than any other short string and
+            # lets a voice client always expect text+audio together, even on
+            # failure, rather than silently getting text with no audio for
+            # this one status. `status` on the JSON "reply" frame above is
+            # untouched by this -- it still reads "failed" whenever `failed`
+            # is True, so a client can still tell a real reply from the
+            # canned fallback; only whether audio accompanies it changes.
+            if self._text_to_speech is not None:
                 logger.info(
                     "[post_message] tts_started | session_id=%s | message_id=%s",
                     session_id,

@@ -104,6 +104,177 @@ class Answer:
 
 
 @dataclass
+class PatientIdentity:
+    """1:1 header for a PatientCase -- see CasePatientIdentityModel (migration 0006).
+
+    `sex` is a plain str ('male'/'female') rather than the infrastructure
+    PatientSex enum -- domain entities never depend on app.infrastructure
+    (see this module's docstring); the CHECK constraint enforcing the value
+    set lives in the DB, mirrored by that enum only on the infra side.
+    """
+
+    name: str | None = None
+    age: int | None = None
+    sex: str | None = None
+    occupation: str | None = None
+    nationality: str | None = None
+    marital_status: str | None = None
+
+
+@dataclass
+class PresentingComplaint:
+    """1:1 header for a PatientCase -- see CasePresentingComplaintModel."""
+
+    chief_complaint: str | None = None
+    hpi_narrative: str | None = None
+
+
+@dataclass
+class AssociatedSymptom:
+    symptom: str
+    is_present: bool
+
+
+@dataclass
+class PastMedicalHistoryItem:
+    item: str
+    note: str | None = None
+
+
+@dataclass
+class CurrentMedication:
+    drug_name: str
+    dose: str
+    note: str | None = None
+
+
+@dataclass
+class Trigger:
+    trigger: str
+    is_primary: bool = False
+
+
+@dataclass
+class FamilySocialHistoryItem:
+    """`category` is 'family' or 'social' -- see FamilySocialCategory (infra-side enum)."""
+
+    category: str
+    item: str
+
+
+@dataclass
+class VitalSign:
+    parameter: str
+    value: str
+    interpretation: str | None = None
+
+
+@dataclass
+class PhysicalExamFinding:
+    """`method` is 'inspection'/'palpation'/'percussion'/'auscultation'."""
+
+    method: str
+    finding: str
+
+
+@dataclass
+class CaseInvestigation:
+    """One investigation actually performed for this patient, as opposed to
+    the disease-reference LabInvestigation/RadiologicalInvestigation shape
+    (which has no domain entity of its own -- see scenario_case_text.py).
+    `category` is 'immediate'/'laboratory'/'imaging'.
+    """
+
+    category: str
+    test_name: str
+    result: str
+    interpretation: str | None = None
+
+
+@dataclass
+class SeverityCriterion:
+    criterion: str
+    patient_value: str
+    classification: str
+
+
+@dataclass
+class WarningSign:
+    """`is_present` is optional -- None means not assessed in this vignette,
+    distinct from explicitly False (assessed and absent)."""
+
+    sign: str
+    is_present: bool | None = None
+
+
+@dataclass
+class ManagementPhaseItem:
+    """`phase` is 'immediate'/'monitoring'/'disposition'; `sequence_order`
+    orders items within the same phase."""
+
+    phase: str
+    treatment: str
+    sequence_order: int
+    dose_route: str | None = None
+    goal: str | None = None
+
+
+@dataclass
+class DispositionCriterion:
+    """`type` is 'admission' or 'discharge'."""
+
+    type: str
+    criterion: str
+
+
+@dataclass
+class DischargePlanItem:
+    """`category` is 'medication'/'education'/'follow_up'/'referral'."""
+
+    category: str
+    detail: str
+
+
+@dataclass
+class LearningObjective:
+    objective_number: int
+    objective_text: str
+
+
+@dataclass
+class PatientCase:
+    """A full ER-style patient-case vignette for one scenario -- a second,
+    parallel layer alongside the disease-reference clinical sections (see
+    docs/scenario-clinical-schema-mapping.md). A scenario may have a
+    PatientCase, disease-reference data, both, or neither.
+
+    Unlike the disease-reference sections (which have no domain entity and
+    are composed straight from ORM rows into `Scenario.case_text` -- see
+    scenario_case_text.py), this aggregate is a plain domain object: built
+    and returned by PatientCaseRepository (app/domain/repositories.py) /
+    SqlPatientCaseRepository, the same nested-list shape as Question.choices.
+    """
+
+    scenario_id: int
+    identity: PatientIdentity | None = None
+    presenting_complaint: PresentingComplaint | None = None
+    associated_symptoms: list[AssociatedSymptom] = field(default_factory=list)
+    past_medical_history: list[PastMedicalHistoryItem] = field(default_factory=list)
+    current_medications: list[CurrentMedication] = field(default_factory=list)
+    triggers: list[Trigger] = field(default_factory=list)
+    family_social_history: list[FamilySocialHistoryItem] = field(default_factory=list)
+    vital_signs: list[VitalSign] = field(default_factory=list)
+    physical_exam_findings: list[PhysicalExamFinding] = field(default_factory=list)
+    investigations: list[CaseInvestigation] = field(default_factory=list)
+    severity_criteria: list[SeverityCriterion] = field(default_factory=list)
+    warning_signs: list[WarningSign] = field(default_factory=list)
+    management_phases: list[ManagementPhaseItem] = field(default_factory=list)
+    disposition_criteria: list[DispositionCriterion] = field(default_factory=list)
+    discharge_plan: list[DischargePlanItem] = field(default_factory=list)
+    learning_objectives: list[LearningObjective] = field(default_factory=list)
+
+
+@dataclass
 class EvaluationCriterion:
     """One graded criterion within an OSCE-style session evaluation."""
 

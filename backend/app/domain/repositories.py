@@ -63,6 +63,32 @@ class TestRepository(ABC):
         GET /scenarios/{scenario_id}/relevant-tests."""
 
 
+class PatientCaseRepository(ABC):
+    """Persists/reads the patient-case simulation layer (migration 0006) --
+    a full ER-style vignette for one scenario, parallel to the disease-
+    reference clinical sections ScenarioRepository composes into case_text.
+    See app.domain.entities.PatientCase.
+    """
+
+    @abstractmethod
+    async def create(self, case: e.PatientCase) -> e.PatientCase:
+        """Writes every section of `case` (identity, presenting complaint,
+        and every list section) in one transaction. `case.scenario_id` must
+        already reference an existing scenario; the caller commits via the
+        surrounding AbstractUnitOfWork.
+        """
+
+    @abstractmethod
+    async def get(self, scenario_id: int) -> e.PatientCase | None:
+        """The full patient case for a scenario, or None if it has none.
+
+        Unlike ScenarioRepository.get(), this never falls back to anything --
+        a scenario with no case_patient_identity/case_presenting_complaint
+        row and no rows in any of the list sections simply has no
+        PatientCase.
+        """
+
+
 class QuestionRepository(ABC):
     @abstractmethod
     async def list_by_scenario(self, scenario_id: int) -> list[e.Question]: ...
@@ -293,6 +319,7 @@ class AbstractUnitOfWork(ABC):
     """
 
     scenarios: ScenarioRepository
+    patient_cases: PatientCaseRepository
     test_categories: TestCategoryRepository
     tests: TestRepository
     questions: QuestionRepository

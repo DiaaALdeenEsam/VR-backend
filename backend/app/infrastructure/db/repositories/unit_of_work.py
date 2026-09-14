@@ -7,6 +7,7 @@ from app.domain.repositories import AbstractUnitOfWork
 from app.infrastructure.db.repositories.answer_repository import SqlAnswerRepository
 from app.infrastructure.db.repositories.message_repository import SqlMessageRepository
 from app.infrastructure.db.repositories.ordered_test_repository import SqlOrderedTestRepository
+from app.infrastructure.db.repositories.patient_case_repository import SqlPatientCaseRepository
 from app.infrastructure.db.repositories.question_repository import SqlQuestionRepository
 from app.infrastructure.db.repositories.scenario_repository import SqlScenarioRepository
 from app.infrastructure.db.repositories.session_repository import SqlSessionRepository
@@ -29,6 +30,7 @@ class SqlAlchemyUnitOfWork(AbstractUnitOfWork):
     async def __aenter__(self) -> SqlAlchemyUnitOfWork:
         self._session = self._session_factory()
         self.scenarios = SqlScenarioRepository(self._session)
+        self.patient_cases = SqlPatientCaseRepository(self._session)
         self.test_categories = SqlTestCategoryRepository(self._session)
         self.tests = SqlTestRepository(self._session)
         self.questions = SqlQuestionRepository(self._session)

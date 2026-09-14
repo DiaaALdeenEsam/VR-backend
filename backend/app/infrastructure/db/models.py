@@ -83,6 +83,44 @@ class PatientSex(str, Enum):
     female = "female"
 
 
+# --- Enums for the patient-case simulation child tables (migration 0006) ---
+#
+# Same convention as above: mirrors a CHECK constraint on the corresponding
+# VARCHAR column (see ck_messages_role). PatientSex and ClinicalSignCategory
+# above are reused where a patient-case column shares the exact same value
+# set (case_patient_identity.sex, case_physical_exam_findings.method) rather
+# than redeclaring an identical enum under a new name.
+
+
+class FamilySocialCategory(str, Enum):
+    family = "family"
+    social = "social"
+
+
+class CaseInvestigationCategory(str, Enum):
+    immediate = "immediate"
+    laboratory = "laboratory"
+    imaging = "imaging"
+
+
+class ManagementPhase(str, Enum):
+    immediate = "immediate"
+    monitoring = "monitoring"
+    disposition = "disposition"
+
+
+class DispositionType(str, Enum):
+    admission = "admission"
+    discharge = "discharge"
+
+
+class DischargePlanCategory(str, Enum):
+    medication = "medication"
+    education = "education"
+    follow_up = "follow_up"
+    referral = "referral"
+
+
 class TestCategoryModel(SQLModel, table=True):
     __tablename__ = "test_categories"
 
@@ -319,6 +357,152 @@ class ScenarioModel(SQLModel, table=True):
     test_results: list[ScenarioTestResultModel] = Relationship(
         sa_relationship=relationship(
             "ScenarioTestResultModel",
+            back_populates="scenario",
+            uselist=True,
+            collection_class=list,
+            cascade="all, delete-orphan",
+        )
+    )
+    # --- Patient-case simulation child tables (migration 0006) -------------
+    # Not one of the 12 disease-reference template sections above -- a
+    # separate, parallel layer describing one concrete ER-style patient
+    # vignette (identity, HPI, exam findings, management plan, ...) rather
+    # than reference facts about the disease in general. See
+    # docs/scenario-clinical-schema-mapping.md for how the two layers relate.
+    # Same relationship-declaration approach as the disease-reference section
+    # above and for the same reason (this module's `from __future__ import
+    # annotations` plus SQLModel 0.0.22's annotation resolver not handling
+    # generic forms -- see the long comment above pathophysiology).
+    patient_identity: CasePatientIdentityModel = Relationship(
+        sa_relationship=relationship(
+            "CasePatientIdentityModel", back_populates="scenario", uselist=False, cascade="all, delete-orphan"
+        )
+    )
+    presenting_complaint: CasePresentingComplaintModel = Relationship(
+        sa_relationship=relationship(
+            "CasePresentingComplaintModel", back_populates="scenario", uselist=False, cascade="all, delete-orphan"
+        )
+    )
+    associated_symptoms: list[CaseAssociatedSymptomModel] = Relationship(
+        sa_relationship=relationship(
+            "CaseAssociatedSymptomModel",
+            back_populates="scenario",
+            uselist=True,
+            collection_class=list,
+            cascade="all, delete-orphan",
+        )
+    )
+    past_medical_history: list[CasePastMedicalHistoryModel] = Relationship(
+        sa_relationship=relationship(
+            "CasePastMedicalHistoryModel",
+            back_populates="scenario",
+            uselist=True,
+            collection_class=list,
+            cascade="all, delete-orphan",
+        )
+    )
+    current_medications: list[CaseCurrentMedicationModel] = Relationship(
+        sa_relationship=relationship(
+            "CaseCurrentMedicationModel",
+            back_populates="scenario",
+            uselist=True,
+            collection_class=list,
+            cascade="all, delete-orphan",
+        )
+    )
+    triggers: list[CaseTriggerModel] = Relationship(
+        sa_relationship=relationship(
+            "CaseTriggerModel",
+            back_populates="scenario",
+            uselist=True,
+            collection_class=list,
+            cascade="all, delete-orphan",
+        )
+    )
+    family_social_history: list[CaseFamilySocialHistoryModel] = Relationship(
+        sa_relationship=relationship(
+            "CaseFamilySocialHistoryModel",
+            back_populates="scenario",
+            uselist=True,
+            collection_class=list,
+            cascade="all, delete-orphan",
+        )
+    )
+    vital_signs: list[CaseVitalSignModel] = Relationship(
+        sa_relationship=relationship(
+            "CaseVitalSignModel",
+            back_populates="scenario",
+            uselist=True,
+            collection_class=list,
+            cascade="all, delete-orphan",
+        )
+    )
+    physical_exam_findings: list[CasePhysicalExamFindingModel] = Relationship(
+        sa_relationship=relationship(
+            "CasePhysicalExamFindingModel",
+            back_populates="scenario",
+            uselist=True,
+            collection_class=list,
+            cascade="all, delete-orphan",
+        )
+    )
+    case_investigations: list[CaseInvestigationModel] = Relationship(
+        sa_relationship=relationship(
+            "CaseInvestigationModel",
+            back_populates="scenario",
+            uselist=True,
+            collection_class=list,
+            cascade="all, delete-orphan",
+        )
+    )
+    severity_criteria: list[CaseSeverityCriterionModel] = Relationship(
+        sa_relationship=relationship(
+            "CaseSeverityCriterionModel",
+            back_populates="scenario",
+            uselist=True,
+            collection_class=list,
+            cascade="all, delete-orphan",
+        )
+    )
+    warning_signs: list[CaseWarningSignModel] = Relationship(
+        sa_relationship=relationship(
+            "CaseWarningSignModel",
+            back_populates="scenario",
+            uselist=True,
+            collection_class=list,
+            cascade="all, delete-orphan",
+        )
+    )
+    management_phases: list[CaseManagementPhaseModel] = Relationship(
+        sa_relationship=relationship(
+            "CaseManagementPhaseModel",
+            back_populates="scenario",
+            uselist=True,
+            collection_class=list,
+            cascade="all, delete-orphan",
+        )
+    )
+    disposition_criteria: list[CaseDispositionCriterionModel] = Relationship(
+        sa_relationship=relationship(
+            "CaseDispositionCriterionModel",
+            back_populates="scenario",
+            uselist=True,
+            collection_class=list,
+            cascade="all, delete-orphan",
+        )
+    )
+    discharge_plan: list[CaseDischargePlanModel] = Relationship(
+        sa_relationship=relationship(
+            "CaseDischargePlanModel",
+            back_populates="scenario",
+            uselist=True,
+            collection_class=list,
+            cascade="all, delete-orphan",
+        )
+    )
+    learning_objectives: list[CaseLearningObjectiveModel] = Relationship(
+        sa_relationship=relationship(
+            "CaseLearningObjectiveModel",
             back_populates="scenario",
             uselist=True,
             collection_class=list,
@@ -694,6 +878,243 @@ class ScenarioTestResultModel(SQLModel, table=True):
 
     scenario: ScenarioModel = Relationship(back_populates="test_results")
     test: TestModel = Relationship(sa_relationship=relationship("TestModel"))
+
+
+# --- Patient-case simulation child tables (migration 0006) ------------------
+#
+# A second, parallel layer under `scenarios`: one concrete ER-style patient
+# vignette (a specific patient's identity, history, exam findings, and
+# management plan) rather than reference facts about a disease in general.
+# See docs/scenario-clinical-schema-mapping.md for how this relates to the
+# 12-section disease-reference layer above. Same two shapes as that layer:
+# 1:1 header tables (PK = scenario_id) for singular fields, 1:N item tables
+# (auto-increment id + indexed scenario_id FK) for repeating fields. CHECK
+# constraints backing every enum column below live in the alembic migration
+# (0006_patient_case_simulation.py), mirroring ck_messages_role.
+
+
+class CasePatientIdentityModel(SQLModel, table=True):
+    """Patient identity/demographics for one case vignette. 1:1 with scenarios."""
+
+    __tablename__ = "case_patient_identity"
+
+    scenario_id: int = Field(foreign_key="scenarios.id", ondelete="CASCADE", primary_key=True)
+    name: str | None = None
+    age: int | None = None
+    sex: PatientSex | None = None
+    occupation: str | None = None
+    nationality: str | None = None
+    marital_status: str | None = None
+
+    scenario: ScenarioModel = Relationship(back_populates="patient_identity")
+
+
+class CasePresentingComplaintModel(SQLModel, table=True):
+    """Chief complaint + history-of-presenting-illness narrative. 1:1 with scenarios."""
+
+    __tablename__ = "case_presenting_complaint"
+
+    scenario_id: int = Field(foreign_key="scenarios.id", ondelete="CASCADE", primary_key=True)
+    chief_complaint: str | None = None
+    hpi_narrative: str | None = None
+
+    scenario: ScenarioModel = Relationship(back_populates="presenting_complaint")
+
+
+class CaseAssociatedSymptomModel(SQLModel, table=True):
+    """Symptoms explicitly present or explicitly absent (pertinent negatives)."""
+
+    __tablename__ = "case_associated_symptoms"
+
+    id: int | None = Field(default=None, primary_key=True)
+    scenario_id: int = Field(foreign_key="scenarios.id", ondelete="CASCADE", index=True)
+    symptom: str
+    is_present: bool
+
+    scenario: ScenarioModel = Relationship(back_populates="associated_symptoms")
+
+
+class CasePastMedicalHistoryModel(SQLModel, table=True):
+    """Past medical history list items."""
+
+    __tablename__ = "case_past_medical_history"
+
+    id: int | None = Field(default=None, primary_key=True)
+    scenario_id: int = Field(foreign_key="scenarios.id", ondelete="CASCADE", index=True)
+    item: str
+    note: str | None = None
+
+    scenario: ScenarioModel = Relationship(back_populates="past_medical_history")
+
+
+class CaseCurrentMedicationModel(SQLModel, table=True):
+    """Medications the patient is already taking at presentation."""
+
+    __tablename__ = "case_current_medications"
+
+    id: int | None = Field(default=None, primary_key=True)
+    scenario_id: int = Field(foreign_key="scenarios.id", ondelete="CASCADE", index=True)
+    drug_name: str
+    dose: str
+    note: str | None = None
+
+    scenario: ScenarioModel = Relationship(back_populates="current_medications")
+
+
+class CaseTriggerModel(SQLModel, table=True):
+    """Precipitating/aggravating triggers for this presentation."""
+
+    __tablename__ = "case_triggers"
+
+    id: int | None = Field(default=None, primary_key=True)
+    scenario_id: int = Field(foreign_key="scenarios.id", ondelete="CASCADE", index=True)
+    trigger: str
+    is_primary: bool = False
+
+    scenario: ScenarioModel = Relationship(back_populates="triggers")
+
+
+class CaseFamilySocialHistoryModel(SQLModel, table=True):
+    """Family history and social history list items, distinguished by `category`."""
+
+    __tablename__ = "case_family_social_history"
+
+    id: int | None = Field(default=None, primary_key=True)
+    scenario_id: int = Field(foreign_key="scenarios.id", ondelete="CASCADE", index=True)
+    category: FamilySocialCategory
+    item: str
+
+    scenario: ScenarioModel = Relationship(back_populates="family_social_history")
+
+
+class CaseVitalSignModel(SQLModel, table=True):
+    """One vital-sign reading (parameter/value pair) at presentation."""
+
+    __tablename__ = "case_vital_signs"
+
+    id: int | None = Field(default=None, primary_key=True)
+    scenario_id: int = Field(foreign_key="scenarios.id", ondelete="CASCADE", index=True)
+    parameter: str
+    value: str
+    interpretation: str | None = None
+
+    scenario: ScenarioModel = Relationship(back_populates="vital_signs")
+
+
+class CasePhysicalExamFindingModel(SQLModel, table=True):
+    """One physical-exam finding, grouped by examination `method`."""
+
+    __tablename__ = "case_physical_exam_findings"
+
+    id: int | None = Field(default=None, primary_key=True)
+    scenario_id: int = Field(foreign_key="scenarios.id", ondelete="CASCADE", index=True)
+    method: ClinicalSignCategory
+    finding: str
+
+    scenario: ScenarioModel = Relationship(back_populates="physical_exam_findings")
+
+
+class CaseInvestigationModel(SQLModel, table=True):
+    """One investigation actually performed/resulted for this patient (as
+    opposed to ScenarioLabInvestigationModel/ScenarioRadiologicalInvestigationModel,
+    which describe what's expected for the disease in general)."""
+
+    __tablename__ = "case_investigations"
+
+    id: int | None = Field(default=None, primary_key=True)
+    scenario_id: int = Field(foreign_key="scenarios.id", ondelete="CASCADE", index=True)
+    category: CaseInvestigationCategory
+    test_name: str
+    result: str
+    interpretation: str | None = None
+
+    scenario: ScenarioModel = Relationship(back_populates="case_investigations")
+
+
+class CaseSeverityCriterionModel(SQLModel, table=True):
+    """One severity-scoring criterion applied to this patient's actual values."""
+
+    __tablename__ = "case_severity_criteria"
+
+    id: int | None = Field(default=None, primary_key=True)
+    scenario_id: int = Field(foreign_key="scenarios.id", ondelete="CASCADE", index=True)
+    criterion: str
+    patient_value: str
+    classification: str
+
+    scenario: ScenarioModel = Relationship(back_populates="severity_criteria")
+
+
+class CaseWarningSignModel(SQLModel, table=True):
+    """A red-flag/warning sign, present, absent, or not assessed (`is_present`
+    is nullable -- unlike CaseAssociatedSymptomModel.is_present, which is
+    always recorded true/false, a warning sign may simply not have been
+    checked for in this vignette)."""
+
+    __tablename__ = "case_warning_signs"
+
+    id: int | None = Field(default=None, primary_key=True)
+    scenario_id: int = Field(foreign_key="scenarios.id", ondelete="CASCADE", index=True)
+    sign: str
+    is_present: bool | None = None
+
+    scenario: ScenarioModel = Relationship(back_populates="warning_signs")
+
+
+class CaseManagementPhaseModel(SQLModel, table=True):
+    """One management step, grouped by `phase` and ordered by `sequence_order`
+    within that phase."""
+
+    __tablename__ = "case_management_phases"
+
+    id: int | None = Field(default=None, primary_key=True)
+    scenario_id: int = Field(foreign_key="scenarios.id", ondelete="CASCADE", index=True)
+    phase: ManagementPhase
+    treatment: str
+    dose_route: str | None = None
+    goal: str | None = None
+    sequence_order: int
+
+    scenario: ScenarioModel = Relationship(back_populates="management_phases")
+
+
+class CaseDispositionCriterionModel(SQLModel, table=True):
+    """One admission-vs-discharge disposition criterion."""
+
+    __tablename__ = "case_disposition_criteria"
+
+    id: int | None = Field(default=None, primary_key=True)
+    scenario_id: int = Field(foreign_key="scenarios.id", ondelete="CASCADE", index=True)
+    type: DispositionType
+    criterion: str
+
+    scenario: ScenarioModel = Relationship(back_populates="disposition_criteria")
+
+
+class CaseDischargePlanModel(SQLModel, table=True):
+    """One discharge-plan item, grouped by `category`."""
+
+    __tablename__ = "case_discharge_plan"
+
+    id: int | None = Field(default=None, primary_key=True)
+    scenario_id: int = Field(foreign_key="scenarios.id", ondelete="CASCADE", index=True)
+    category: DischargePlanCategory
+    detail: str
+
+    scenario: ScenarioModel = Relationship(back_populates="discharge_plan")
+
+
+class CaseLearningObjectiveModel(SQLModel, table=True):
+    """One numbered learning objective for this case vignette."""
+
+    __tablename__ = "case_learning_objectives"
+
+    id: int | None = Field(default=None, primary_key=True)
+    scenario_id: int = Field(foreign_key="scenarios.id", ondelete="CASCADE", index=True)
+    objective_number: int
+    objective_text: str
+
+    scenario: ScenarioModel = Relationship(back_populates="learning_objectives")
 
 
 class QuestionModel(SQLModel, table=True):

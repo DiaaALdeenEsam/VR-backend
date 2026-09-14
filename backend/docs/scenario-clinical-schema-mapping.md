@@ -1,5 +1,30 @@
 # Scenario clinical schema: template JSON → database mapping
 
+`scenarios` carries two independent, optional layers of normalized clinical
+data, either or both of which may be empty for a given scenario:
+
+1. **Disease-reference layer** (12 sections, 21 tables, migrations
+   0002-0004) -- reference facts about the disease in general (typical
+   pathophysiology, typical risk factors, typical management, ...),
+   composed at read time into `scenarios.case_text`. This is what the rest
+   of this document maps.
+2. **Patient-case simulation layer** (16 tables, migration 0006) -- one
+   concrete ER-style patient vignette (this particular patient's identity,
+   HPI, vitals, exam findings, actual investigation results, and management
+   plan). See "Patient-case simulation layer" below.
+
+They are independent because they answer different questions ("what is
+typically true of this disease" vs. "what happened with this one patient")
+and are consumed differently: the disease-reference layer only ever feeds
+`Scenario.case_text` (no domain entity of its own -- see "case_text
+composition" below); the patient-case layer has its own domain entity
+(`PatientCase`) and repository (`PatientCaseRepository`) and is read/written
+as a structured aggregate, never flattened into `case_text`. A scenario can
+have disease-reference data, patient-case data, both, or neither -- nothing
+in either layer requires the other to exist.
+
+## Disease-reference layer
+
 This maps the 12-section reference disease-template JSON (see the
 `fields` object in a template like `template.json`) onto the normalized
 child tables added under `scenarios` by
@@ -182,3 +207,51 @@ exists. If a scenario has no rows in any of the 21 tables above (e.g. it was
 seeded via the legacy `seed_data/scenarios.json` importer or the `.docx`
 importer, which only ever write the plain `case_text` column), the stored
 column is returned unchanged.
+
+The patient-case layer below plays no part in this composition -- it is
+never folded into `case_text`, regardless of whether a scenario has one.
+
+## Patient-case simulation layer
+
+Added by
+[`alembic/versions/0006_patient_case_simulation.py`](../alembic/versions/0006_patient_case_simulation.py)
+and modeled in
+[`app/infrastructure/db/models.py`](../app/infrastructure/db/models.py).
+16 tables under `scenarios`, same two shapes as the disease-reference layer
+above (1:1 header tables keyed on `scenario_id`; 1:N item tables with an
+auto-increment `id` + indexed `scenario_id` FK), every FK `ondelete=CASCADE`.
+
+Unlike the disease-reference layer, this one has its own domain entity
+(`PatientCase`, in
+[`app/domain/entities.py`](../app/domain/entities.py)) and repository
+(`PatientCaseRepository` / `SqlPatientCaseRepository`, wired into
+`SqlAlchemyUnitOfWork.patient_cases` -- see
+[`app/infrastructure/db/repositories/patient_case_repository.py`](../app/infrastructure/db/repositories/patient_case_repository.py)),
+so it is read and written as a structured aggregate rather than composed
+into a string. `PatientCaseRepository.create()` writes every section in one
+transaction; `get()` returns `None` for a scenario with no patient-case data
+at all (it never falls back to anything, unlike `ScenarioRepository.get()`).
+
+| Table | Cardinality | Columns | Notes |
+|---|---|---|---|
+| `case_patient_identity` | 1:1 | `name`, `age`, `sex`, `occupation`, `nationality`, `marital_status` | `sex` CHECK `male \| female` (mirrored as `PatientSex`, reused from the disease-reference layer's `ScenarioPatientProfileModel.sex`) |
+| `case_presenting_complaint` | 1:1 | `chief_complaint`, `hpi_narrative` | |
+| `case_associated_symptoms` | 1:N | `symptom`, `is_present` (NOT NULL) | Records pertinent negatives, not just positives |
+| `case_past_medical_history` | 1:N | `item`, `note` | |
+| `case_current_medications` | 1:N | `drug_name`, `dose`, `note` | |
+| `case_triggers` | 1:N | `trigger`, `is_primary` (default `false`) | |
+| `case_family_social_history` | 1:N | `category`, `item` | `category` CHECK `family \| social` (`FamilySocialCategory`) |
+| `case_vital_signs` | 1:N | `parameter`, `value`, `interpretation` | |
+| `case_physical_exam_findings` | 1:N | `method`, `finding` | `method` CHECK `inspection \| palpation \| percussion \| auscultation` -- reuses `ClinicalSignCategory` from the disease-reference layer (same value set) |
+| `case_investigations` | 1:N | `category`, `test_name`, `result`, `interpretation` | `category` CHECK `immediate \| laboratory \| imaging` (`CaseInvestigationCategory` -- distinct from the disease-reference layer's `InvestigationPriority`, which is `essential \| confirmatory \| optional`); this table records what was actually done/found for this patient, unlike `scenario_lab_investigations`/`scenario_radiological_investigations`, which describe what's typically expected for the disease |
+| `case_severity_criteria` | 1:N | `criterion`, `patient_value`, `classification` | This patient's actual values against a severity score, e.g. Alvarado/CURB-65 |
+| `case_warning_signs` | 1:N | `sign`, `is_present` (nullable) | `is_present` is nullable, unlike `case_associated_symptoms.is_present` -- `NULL` means not assessed in this vignette, distinct from an explicit "absent" |
+| `case_management_phases` | 1:N | `phase`, `treatment`, `dose_route`, `goal`, `sequence_order` (NOT NULL) | `phase` CHECK `immediate \| monitoring \| disposition` (`ManagementPhase`); `sequence_order` orders items within the same phase |
+| `case_disposition_criteria` | 1:N | `type`, `criterion` | `type` CHECK `admission \| discharge` (`DispositionType`) |
+| `case_discharge_plan` | 1:N | `category`, `detail` | `category` CHECK `medication \| education \| follow_up \| referral` (`DischargePlanCategory`) |
+| `case_learning_objectives` | 1:N | `objective_number` (NOT NULL), `objective_text` | |
+
+Import path: `scripts/import_patient_case_from_json.py` (parallel to, but
+independent of, `scripts/import_scenario_from_json.py` for the
+disease-reference layer -- see that script's own docstring for its JSON
+shape and usage).

@@ -57,20 +57,12 @@ class _FakeEvaluationGenerator(EvaluationGenerator):
         case_text: str,
         gold_standard: str,
         messages: list[dict[str, str]],
-        ordered_tests: list[dict],
-        answers: list[dict],
-        relevant_test_ids: list[int],
-        total_questions: int,
     ) -> SessionEvaluation:
         self.calls += 1
         self.last_call_kwargs = dict(
             case_text=case_text,
             gold_standard=gold_standard,
             messages=messages,
-            ordered_tests=ordered_tests,
-            answers=answers,
-            relevant_test_ids=relevant_test_ids,
-            total_questions=total_questions,
         )
         await asyncio.sleep(self.delay)
         if self.raises is not None:
@@ -193,8 +185,6 @@ async def test_successful_evaluation_pushes_complete_result(
         summary="great job",
         criteria_breakdown=[
             EvaluationCriterion(name="Conversation quality", passed=True, feedback="thorough"),
-            EvaluationCriterion(name="Investigation appropriateness", passed=True, feedback="all relevant"),
-            EvaluationCriterion(name="Quiz performance", passed=False, feedback="one wrong"),
         ],
     )
     generator = _FakeEvaluationGenerator(delay=0.05, result=result)
@@ -212,8 +202,6 @@ async def test_successful_evaluation_pushes_complete_result(
     assert pushed["summary"] == "great job"
     assert pushed["criteria_breakdown"] == [
         {"name": "Conversation quality", "passed": True, "feedback": "thorough"},
-        {"name": "Investigation appropriateness", "passed": True, "feedback": "all relevant"},
-        {"name": "Quiz performance", "passed": False, "feedback": "one wrong"},
     ]
 
 

@@ -1,6 +1,12 @@
 """Tests for app/infrastructure/evaluation_prompt.py -- the prompt builder
 and the strict JSON-response parser, both pure functions (no HTTP, no mocks
-needed)."""
+needed).
+
+Chat-only assessment model (2026-09-14): build_prompt()/parse_llm_evaluation()
+no longer take or produce test_ordering/quiz sections -- see the module's own
+docstring for the full rationale and the transcript-vs-case/gold_standard
+budget rebalance that came with it.
+"""
 
 from __future__ import annotations
 
@@ -21,10 +27,6 @@ def _kwargs(**overrides: object) -> dict:
             {"role": "user", "content": "Where does it hurt?"},
             {"role": "assistant", "content": "Lower right side."},
         ],
-        ordered_tests=[{"test_id": 1}],
-        answers=[{"question_id": 1, "choice_id": 1, "is_correct": True}],
-        relevant_test_ids=[1, 2],
-        total_questions=2,
     )
     defaults.update(overrides)
     return defaults
@@ -50,8 +52,10 @@ def test_build_prompt_stays_under_budget_with_a_huge_transcript() -> None:
 
 def test_build_prompt_drops_oldest_transcript_turns_first_on_a_tight_budget() -> None:
     """Even within TRANSCRIPT_MAX_MESSAGES, a tight remaining budget (huge
-    case/gold text eating most of MAX_PROMPT_CHARS) must still drop the
-    *oldest* of those turns, not silently omit the newest ones."""
+    case/gold text) must still drop the *oldest* of those turns, not
+    silently omit the newest ones -- the transcript is now sized against its
+    own real need first (see the module docstring's 2026-09-14 rebalance),
+    but a genuinely long transcript can still exceed even that reservation."""
 
     messages = [{"role": "user" if i % 2 == 0 else "assistant", "content": f"turn {i} " * 20} for i in range(8)]
     prompt, _ = build_prompt(**_kwargs(messages=messages, case_text="y" * 5000, gold_standard="z" * 5000))
@@ -60,30 +64,43 @@ def test_build_prompt_drops_oldest_transcript_turns_first_on_a_tight_budget() ->
     assert "turn 0" not in prompt  # oldest was dropped first
 
 
-def test_build_prompt_reports_appropriateness_not_raw_test_names() -> None:
-    """The LLM must be told which ordered tests were appropriate, not asked
-    to infer it from names it's never given (see EvaluationGenerator's
-    docstring) -- so no test name/id should even appear in the prompt."""
+def test_build_prompt_protects_transcript_from_a_long_case_and_gold_standard() -> None:
+    """The 2026-09-14 fix this test locks in: a long case_text/gold_standard
+    must no longer starve a short, realistic transcript down to 1-2 turns --
+    every turn of a normal-length conversation should survive even when
+    case_text/gold_standard are each far longer than their old (150/450)
+    caps."""
 
-    prompt, _ = build_prompt(**_kwargs(ordered_tests=[{"test_id": 1}, {"test_id": 99}], relevant_test_ids=[1]))
-    assert "2 ordered, 1 appropriate, 1 inappropriate" in prompt
+    messages = [
+        {"role": "user", "content": "What brought you in today?"},
+        {"role": "assistant", "content": "Shortness of breath for three hours."},
+        {"role": "user", "content": "Any triggers?"},
+        {"role": "assistant", "content": "Being near a cat."},
+        {"role": "user", "content": "Do you use an inhaler?"},
+        {"role": "assistant", "content": "Yes, but it isn't helping today."},
+    ]
+    prompt, _ = build_prompt(**_kwargs(messages=messages, case_text="a" * 2000, gold_standard="b" * 1800))
+    assert len(prompt) <= MAX_PROMPT_CHARS
+    assert "[earlier turns omitted]" not in prompt
+    for turn in messages:
+        assert turn["content"] in prompt
 
 
-def test_build_prompt_reports_quiz_counts() -> None:
-    prompt, _ = build_prompt(
-        **_kwargs(
-            answers=[
-                {"question_id": 1, "choice_id": 1, "is_correct": True},
-                {"question_id": 2, "choice_id": 2, "is_correct": False},
-            ],
-            total_questions=3,
-        )
-    )
-    assert "1/3 correct (2 attempted)" in prompt
+def test_build_prompt_does_not_truncate_a_short_case_and_gold_standard() -> None:
+    """A case/gold_standard short enough to fit the two seed scenarios must
+    still reach the grader completely untruncated -- unaffected by the
+    2026-09-14 rebalance."""
+
+    case_text = "A patient presents with abdominal pain."
+    gold_standard = "Acute appendicitis."
+    prompt, _ = build_prompt(**_kwargs(case_text=case_text, gold_standard=gold_standard))
+    assert case_text in prompt
+    assert gold_standard in prompt
+    assert "…[truncated]" not in prompt
 
 
 def test_build_prompt_handles_no_conversation_at_all() -> None:
-    prompt, language = build_prompt(**_kwargs(messages=[], ordered_tests=[], answers=[], total_questions=0))
+    prompt, language = build_prompt(**_kwargs(messages=[]))
     assert "(no conversation took place)" in prompt
     assert language == "ar"  # default with no doctor turns to read
 
@@ -102,28 +119,24 @@ def test_build_prompt_requests_json_only_output() -> None:
     prompt, _ = build_prompt(**_kwargs())
     assert "ONLY this JSON" in prompt
     assert '"conversation"' in prompt
-    assert '"test_ordering"' in prompt
-    assert '"quiz"' in prompt
     assert '"overall_summary"' in prompt
+    # Chat-only assessment model: no test-ordering/quiz section left.
+    assert '"test_ordering"' not in prompt
+    assert '"quiz"' not in prompt
+    assert "TESTS ORDERED" not in prompt
+    assert "QUIZ:" not in prompt
 
 
 # ---------- parse_llm_evaluation -------------------------------------------
 
 
 def _valid_json() -> str:
-    return (
-        '{"conversation": {"score_pct": 80, "feedback": "Good history taking."}, '
-        '"test_ordering": {"score_pct": 100, "feedback": "All relevant tests ordered."}, '
-        '"quiz": {"score_pct": 66.5, "feedback": "Two of three correct."}, '
-        '"overall_summary": "Solid overall performance."}'
-    )
+    return '{"conversation": {"score_pct": 80, "feedback": "Good history taking."}, "overall_summary": "Solid overall performance."}'
 
 
 def test_parse_valid_json() -> None:
     parsed = parse_llm_evaluation(_valid_json())
     assert parsed["conversation"] == (80.0, "Good history taking.")
-    assert parsed["test_ordering"] == (100.0, "All relevant tests ordered.")
-    assert parsed["quiz"] == (66.5, "Two of three correct.")
     assert parsed["overall_summary"] == "Solid overall performance."
 
 
@@ -144,13 +157,13 @@ def test_parse_strips_bare_code_fence() -> None:
     [
         "not json at all",
         "[]",
-        '{"conversation": {"score_pct": 80, "feedback": "ok"}, "test_ordering": {"score_pct": 80, "feedback": "ok"}}',  # missing quiz/overall_summary
-        '{"conversation": "not an object", "test_ordering": {"score_pct": 80, "feedback": "ok"}, "quiz": {"score_pct": 80, "feedback": "ok"}, "overall_summary": "s"}',
-        '{"conversation": {"score_pct": "eighty", "feedback": "ok"}, "test_ordering": {"score_pct": 80, "feedback": "ok"}, "quiz": {"score_pct": 80, "feedback": "ok"}, "overall_summary": "s"}',
-        '{"conversation": {"score_pct": 150, "feedback": "ok"}, "test_ordering": {"score_pct": 80, "feedback": "ok"}, "quiz": {"score_pct": 80, "feedback": "ok"}, "overall_summary": "s"}',
-        '{"conversation": {"score_pct": 80, "feedback": ""}, "test_ordering": {"score_pct": 80, "feedback": "ok"}, "quiz": {"score_pct": 80, "feedback": "ok"}, "overall_summary": "s"}',
-        '{"conversation": {"score_pct": 80, "feedback": "ok"}, "test_ordering": {"score_pct": 80, "feedback": "ok"}, "quiz": {"score_pct": 80, "feedback": "ok"}, "overall_summary": ""}',
-        '{"conversation": {"score_pct": true, "feedback": "ok"}, "test_ordering": {"score_pct": 80, "feedback": "ok"}, "quiz": {"score_pct": 80, "feedback": "ok"}, "overall_summary": "s"}',
+        '{"conversation": {"score_pct": 80, "feedback": "ok"}}',  # missing overall_summary
+        '{"conversation": "not an object", "overall_summary": "s"}',
+        '{"conversation": {"score_pct": "eighty", "feedback": "ok"}, "overall_summary": "s"}',
+        '{"conversation": {"score_pct": 150, "feedback": "ok"}, "overall_summary": "s"}',
+        '{"conversation": {"score_pct": 80, "feedback": ""}, "overall_summary": "s"}',
+        '{"conversation": {"score_pct": 80, "feedback": "ok"}, "overall_summary": ""}',
+        '{"conversation": {"score_pct": true, "feedback": "ok"}, "overall_summary": "s"}',
     ],
 )
 def test_parse_rejects_malformed_or_incomplete_responses(raw: str) -> None:
@@ -159,14 +172,9 @@ def test_parse_rejects_malformed_or_incomplete_responses(raw: str) -> None:
 
 
 def test_parse_does_not_salvage_partial_output() -> None:
-    """One section missing entirely must fail the whole parse -- never
-    return the two sections that did parse with the third silently
-    defaulted."""
+    """A missing required key must fail the whole parse -- never return a
+    result with the missing field silently defaulted."""
 
-    raw = (
-        '{"conversation": {"score_pct": 80, "feedback": "ok"}, '
-        '"test_ordering": {"score_pct": 80, "feedback": "ok"}, '
-        '"overall_summary": "s"}'
-    )
-    with pytest.raises(ValueError, match="quiz"):
+    raw = '{"overall_summary": "s"}'
+    with pytest.raises(ValueError, match="conversation"):
         parse_llm_evaluation(raw)

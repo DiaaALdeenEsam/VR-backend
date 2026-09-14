@@ -18,15 +18,19 @@ class EvaluationInputs:
     straight to EvaluationGenerator.evaluate() via **vars(...), by both
     EvaluateSessionUseCase (synchronous) and EvaluateSessionAsyncUseCase
     (background phase) without re-deriving it twice.
+
+    Chat-only assessment model (2026-09-14): used to also carry
+    ordered_tests/answers/relevant_test_ids/total_questions for
+    investigation-ordering/quiz scoring -- removed along with that scoring
+    (see EvaluationGenerator's docstring). gather_evaluation_inputs() below
+    no longer queries uow.ordered_tests/uow.answers/uow.tests/uow.questions
+    for this purpose; those repositories and their underlying tables are
+    otherwise untouched.
     """
 
     case_text: str
     gold_standard: str
     messages: list[dict[str, str]]
-    ordered_tests: list[dict]
-    answers: list[dict]
-    relevant_test_ids: list[int]
-    total_questions: int
 
 
 async def gather_evaluation_inputs(uow: AbstractUnitOfWork, session_id: str) -> EvaluationInputs:
@@ -72,37 +76,10 @@ async def gather_evaluation_inputs(uow: AbstractUnitOfWork, session_id: str) -> 
     messages = [m for m in all_messages if m.status not in ("pending", "generating")]
     message_dicts = [{"role": m.role, "content": m.content} for m in messages]
 
-    ordered_tests = await uow.ordered_tests.list_by_session(session_id)
-    ordered_test_dicts = [{"test_id": ot.test_id} for ot in ordered_tests]
-
-    answers = await uow.answers.list_by_session(session_id)
-    answer_dicts = [
-        {"question_id": a.question_id, "choice_id": a.choice_id, "is_correct": a.is_correct} for a in answers
-    ]
-
-    # What this scenario's own data says is relevant (see
-    # ScenarioTestResultModel, migration 0004) -- what ordered_tests is
-    # judged against, not what's merely orderable.
-    relevant_tests = await uow.tests.list_scenario_relevant(session.scenario_id)
-    relevant_test_ids = [t.id for t in relevant_tests]
-
-    # Total, not just attempted: len(uow.questions.list_by_scenario(...))
-    # rather than a dedicated count_by_scenario() -- QuestionRepository
-    # already has to load full Question entities (with choices) for
-    # GET /scenarios/{id}/questions, so a second method that only returns a
-    # count would be redundant surface for what's already a cheap, small,
-    # per-scenario list in this project's data.
-    questions = await uow.questions.list_by_scenario(session.scenario_id)
-    total_questions = len(questions)
-
     return EvaluationInputs(
         case_text=scenario.case_text,
         gold_standard=scenario.gold_standard,
         messages=message_dicts,
-        ordered_tests=ordered_test_dicts,
-        answers=answer_dicts,
-        relevant_test_ids=relevant_test_ids,
-        total_questions=total_questions,
     )
 
 
@@ -138,8 +115,4 @@ class EvaluateSessionUseCase:
                 case_text=inputs.case_text,
                 gold_standard=inputs.gold_standard,
                 messages=inputs.messages,
-                ordered_tests=inputs.ordered_tests,
-                answers=inputs.answers,
-                relevant_test_ids=inputs.relevant_test_ids,
-                total_questions=inputs.total_questions,
             )

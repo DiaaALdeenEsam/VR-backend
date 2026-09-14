@@ -4,12 +4,14 @@ route (POST /v1/rag/chat) -- see docs/backend-rag-handoff.md.
 Replaces StubEvaluationGenerator (app/infrastructure/stub_evaluator.py) as
 the "real" evaluator: instead of deterministic rule-based arithmetic over
 message counts, this asks the same backing LLM the RAG API already serves
-for a structured JSON verdict on three independent axes -- conversation
-quality, investigation-ordering appropriateness, and quiz performance (see
+for a structured JSON verdict on conversation quality (see
 app/infrastructure/evaluation_prompt.py for the exact prompt and JSON
-contract) -- then computes the final weighted score in *this* code from the
-three score_pct values it returns. The LLM is never trusted to do that
-arithmetic itself.
+contract). Chat-only assessment model (2026-09-14): this used to also grade
+investigation-ordering and quiz performance and combine all three via a
+fixed weighted sum -- that scoring was removed (test-ordering/quiz are
+permanently deprecated as evaluation inputs); the score returned here is now
+simply the LLM's own conversation score_pct, unweighted (there is nothing
+left to weight against).
 
 No fallback to StubEvaluationGenerator (or any rule-based score) on any
 failure here. A bad/unreachable response, an exhausted-retries 503, a
@@ -76,18 +78,9 @@ _VALIDATION_ERROR_CODES = frozenset({"RAG_LANGUAGE_MISMATCH"})
 _RAW_RESPONSE_LOG_CHARS = 2000
 
 # Below this score_pct (0-100), a section's mapped EvaluationCriterion below
-# is passed=False. Arbitrary, matching StubEvaluationGenerator's
-# QUIZ_PASS_THRESHOLD (0.5) precedent -- the same simple midpoint for every
-# section rather than section-specific cutoffs, named here so it isn't a
-# magic number at the call site.
+# is passed=False. Arbitrary, matching StubEvaluationGenerator's precedent --
+# a simple midpoint, named here so it isn't a magic number at the call site.
 SECTION_PASS_THRESHOLD_PCT = 50.0
-
-# Same three weights StubEvaluationGenerator used (app/infrastructure/stub_evaluator.py)
-# -- must sum to 1.0. The LLM never computes this itself (see module
-# docstring); it only returns the three raw score_pct values these multiply.
-CONVERSATION_WEIGHT = 0.4
-TEST_ORDERING_WEIGHT = 0.3
-QUIZ_WEIGHT = 0.3
 
 
 async def _backoff_sleep(seconds: float) -> None:
@@ -125,10 +118,6 @@ class RagLlmEvaluator(EvaluationGenerator):
         case_text: str,
         gold_standard: str,
         messages: list[dict[str, str]],
-        ordered_tests: list[dict],
-        answers: list[dict],
-        relevant_test_ids: list[int],
-        total_questions: int,
     ) -> SessionEvaluation:
         base_url = self._settings.rag_api_base_url
         api_key = self._settings.rag_api_key
@@ -142,10 +131,6 @@ class RagLlmEvaluator(EvaluationGenerator):
             case_text=case_text,
             gold_standard=gold_standard,
             messages=messages,
-            ordered_tests=ordered_tests,
-            answers=answers,
-            relevant_test_ids=relevant_test_ids,
-            total_questions=total_questions,
         )
 
         body = {
@@ -250,25 +235,12 @@ class RagLlmEvaluator(EvaluationGenerator):
         logger.info("[rag_evaluator] request_succeeded | duration_s=%.1f", time.monotonic() - start_time)
 
         conversation_pct, conversation_feedback = parsed["conversation"]
-        test_ordering_pct, test_ordering_feedback = parsed["test_ordering"]
-        quiz_pct, quiz_feedback = parsed["quiz"]
 
-        score = round(
-            conversation_pct * CONVERSATION_WEIGHT
-            + test_ordering_pct * TEST_ORDERING_WEIGHT
-            + quiz_pct * QUIZ_WEIGHT,
-            1,
-        )
-
-        criteria = [
-            _criterion("Conversation quality", conversation_pct, conversation_feedback),
-            _criterion("Investigation appropriateness", test_ordering_pct, test_ordering_feedback),
-            _criterion("Quiz performance", quiz_pct, quiz_feedback),
-        ]
+        criteria = [_criterion("Conversation quality", conversation_pct, conversation_feedback)]
 
         return SessionEvaluation(
             status="complete",
-            score=score,
+            score=round(conversation_pct, 1),
             summary=parsed["overall_summary"],
             criteria_breakdown=criteria,
         )

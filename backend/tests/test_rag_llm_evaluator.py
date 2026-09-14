@@ -16,13 +16,7 @@ import pytest
 import app.infrastructure.rag_llm_evaluator as evaluator_mod
 from app.config import Settings
 from app.domain.exceptions import RagServiceUnavailableError
-from app.infrastructure.rag_llm_evaluator import (
-    CONVERSATION_WEIGHT,
-    QUIZ_WEIGHT,
-    SECTION_PASS_THRESHOLD_PCT,
-    TEST_ORDERING_WEIGHT,
-    RagLlmEvaluator,
-)
+from app.infrastructure.rag_llm_evaluator import RagLlmEvaluator
 
 FAKE_API_KEY = "sk-test-super-secret-do-not-log-me"
 
@@ -48,13 +42,6 @@ def _evaluation_inputs() -> dict:
             {"role": "user", "content": "Where does it hurt?"},
             {"role": "assistant", "content": "Lower right side."},
         ],
-        ordered_tests=[{"test_id": 1}, {"test_id": 2}],
-        answers=[
-            {"question_id": 1, "choice_id": 1, "is_correct": True},
-            {"question_id": 2, "choice_id": 2, "is_correct": False},
-        ],
-        relevant_test_ids=[1, 2],
-        total_questions=2,
     )
 
 
@@ -70,9 +57,7 @@ def _chat_response(content: str) -> dict:
 def _valid_llm_json() -> str:
     return (
         '{"conversation": {"score_pct": 80, "feedback": "Good history taking."}, '
-        '"test_ordering": {"score_pct": 100, "feedback": "Both relevant tests ordered."}, '
-        '"quiz": {"score_pct": 50, "feedback": "One of two correct."}, '
-        '"overall_summary": "Solid overall performance with room to improve on the quiz."}'
+        '"overall_summary": "Solid overall performance."}'
     )
 
 
@@ -128,16 +113,15 @@ async def test_successful_evaluation_computes_weighted_score() -> None:
     result = await evaluator.evaluate(**_evaluation_inputs())
 
     assert result.status == "complete"
-    expected = round(80 * CONVERSATION_WEIGHT + 100 * TEST_ORDERING_WEIGHT + 50 * QUIZ_WEIGHT, 1)
-    assert result.score == expected
-    assert result.summary == "Solid overall performance with room to improve on the quiz."
+    # Chat-only assessment model: score is simply the LLM's own conversation
+    # score_pct, unweighted -- there is nothing else left to combine it with.
+    assert result.score == 80.0
+    assert result.summary == "Solid overall performance."
 
-    assert len(result.criteria_breakdown) == 3
+    assert len(result.criteria_breakdown) == 1
     by_name = {c.name: c for c in result.criteria_breakdown}
     assert by_name["Conversation quality"].passed is True
     assert by_name["Conversation quality"].feedback == "Good history taking."
-    assert by_name["Investigation appropriateness"].passed is True
-    assert by_name["Quiz performance"].passed == (50 >= SECTION_PASS_THRESHOLD_PCT)
 
 
 async def test_request_body_sends_a_single_user_message_and_detected_language() -> None:

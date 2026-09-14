@@ -81,12 +81,9 @@ class EvaluateSessionAsyncUseCase:
             inputs = await gather_evaluation_inputs(uow, session_id)
 
         logger.info(
-            "[evaluate_session] evaluation_inputs_gathered | session_id=%s | messages=%d | "
-            "ordered_tests=%d | answers=%d",
+            "[evaluate_session] evaluation_inputs_gathered | session_id=%s | messages=%d",
             session_id,
             len(inputs.messages),
-            len(inputs.ordered_tests),
-            len(inputs.answers),
         )
 
         # Registered *before* returning, so a second call arriving the
@@ -106,10 +103,6 @@ class EvaluateSessionAsyncUseCase:
                         case_text=inputs.case_text,
                         gold_standard=inputs.gold_standard,
                         messages=inputs.messages,
-                        ordered_tests=inputs.ordered_tests,
-                        answers=inputs.answers,
-                        relevant_test_ids=inputs.relevant_test_ids,
-                        total_questions=inputs.total_questions,
                     ),
                     timeout=self._settings.rag_evaluation_hard_timeout_seconds,
                 )

@@ -174,13 +174,23 @@ class PatientReplyGenerator(ABC):
 class EvaluationGenerator(ABC):
     """Port for generating an OSCE-style evaluation of a completed session.
 
-    Deliberately takes primitives (case_text/gold_standard/messages-as-dicts/
-    ordered_tests-as-dicts/answers-as-dicts/relevant_test_ids/total_questions)
+    Deliberately takes primitives (case_text/gold_standard/messages-as-dicts)
     rather than domain entities directly -- keeps this port trivially
     serializable for a future real LLM-backed implementation (e.g. dropping
     these straight into a prompt or an API payload) without coupling it to
     this project's entity shapes. EvaluateSessionUseCase does the translation
     from domain entities to these primitives.
+
+    Chat-only assessment model (2026-09-14): this port grades ONLY the
+    conversation transcript against case_text/gold_standard. It used to also
+    take ordered_tests/answers/relevant_test_ids/total_questions and score
+    investigation-ordering and quiz performance alongside the conversation --
+    that scoring was removed (test-ordering and quiz are permanently
+    deprecated as evaluation inputs), not just hidden; if that data is ever
+    needed again this signature is the place it would come back. The
+    underlying tests/questions/choices/answers/ordered_tests tables,
+    repositories, and endpoints are unaffected by this -- only what
+    EvaluationGenerator itself is asked to grade changed.
     """
 
     @abstractmethod
@@ -189,31 +199,9 @@ class EvaluationGenerator(ABC):
         case_text: str,
         gold_standard: str,
         messages: list[dict[str, str]],
-        ordered_tests: list[dict],
-        answers: list[dict],
-        relevant_test_ids: list[int],
-        total_questions: int,
     ) -> e.SessionEvaluation:
-        """Grades a session against a scenario's gold standard and its
-        investigation-ordering / quiz activity.
-
-        ordered_tests: one dict per test the doctor ordered this session, in
-            order, each `{"test_id": int}` -- deliberately minimal, matching
-            `messages`' own minimal shape; nothing here needs `ordered_at` or
-            the test's name/result.
-        answers: one dict per quiz question the doctor has answered this
-            session, each `{"question_id": int, "choice_id": int,
-            "is_correct": bool}`. Correctness is precomputed by
-            AnswerQuestionUseCase, not recomputed here.
-        relevant_test_ids: the scenario's clinically-relevant test ids (see
-            ScenarioTestResultModel / GET /scenarios/{id}/relevant-tests) --
-            what `ordered_tests` should be judged against for appropriateness.
-        total_questions: how many quiz questions exist for the scenario in
-            total, not just how many are in `answers` -- an implementation
-            grading quiz accuracy out of this (rather than out of
-            `len(answers)`) is expected to penalize unanswered questions,
-            not just wrong ones.
-        """
+        """Grades a session's chat transcript against a scenario's case_text
+        and gold standard."""
 
 
 class SpeechToTextPort(ABC):

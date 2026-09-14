@@ -11,7 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.error_handlers import register_error_handlers
 from app.api.routers import chat, health, questions, scenarios, sessions, test_categories, voice
 from app.config import get_settings
-from app.infrastructure import voice_models
+from app.infrastructure import rag_tunnel_watcher, voice_models
 from app.infrastructure.db import engine as db_engine
 
 
@@ -23,7 +23,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # here, not per-request: app/api/deps.py's get_speech_to_text_port()/
     # get_text_to_speech_port() read whatever this decides for the rest of the process.
     voice_models.init_voice_backend(get_settings())
+    # Only does anything if RAG_TUNNEL_WATCH_ENABLED is true -- a no-op otherwise
+    # (see rag_tunnel_watcher.py's module docstring and Settings.rag_tunnel_watch_enabled).
+    rag_tunnel_watcher.start(get_settings())
     yield
+    await rag_tunnel_watcher.stop()
     await db_engine.dispose_engine()
     voice_models.dispose_voice_backend()
 

@@ -102,3 +102,28 @@ class RagServiceUnavailableError(DomainError):
         self.service = service
         self.reason = reason
         super().__init__(f"{service} is unavailable: {reason}")
+
+
+class RagValidationError(RagServiceUnavailableError):
+    """A RagServiceUnavailableError specifically caused by the request
+    itself being invalid, not by a connection failure/timeout/outage -- a
+    401/422 response, a documented "controlled fallback" error code (e.g.
+    PATIENT_LANGUAGE_MISMATCH, RAG_LANGUAGE_MISMATCH -- see
+    docs/backend-rag-handoff.md), or a client-side pre-flight rejection
+    (e.g. a message too long to send at all, see
+    rag_patient_generator.py's MESSAGE_MAX_CHARS).
+
+    Deliberately a SUBCLASS of RagServiceUnavailableError, not a sibling of
+    it: every existing `except RagServiceUnavailableError` call site
+    (retrieve_evidence_or_empty(), PostMessageAsyncUseCase,
+    EvaluateSessionAsyncUseCase) keeps catching this correctly with zero
+    changes required, since retrying a validation failure is never going to
+    succeed regardless of which of the two a given caller happens to catch --
+    the fallback/degrade behavior at every existing catch site is exactly
+    as appropriate here as for a real connection failure. A caller that
+    *does* want to react differently (e.g. tag a log line
+    reason="validation" instead of reason="connection", without changing
+    what it actually does) adds a more specific `except RagValidationError:`
+    ahead of the general one -- see PostMessageAsyncUseCase._generate_and_push()
+    and EvaluateSessionAsyncUseCase._generate_and_push() for exactly that.
+    """

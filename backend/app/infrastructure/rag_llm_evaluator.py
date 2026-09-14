@@ -41,9 +41,10 @@ import httpx
 
 from app.config import Settings, get_settings
 from app.domain.entities import EvaluationCriterion, SessionEvaluation
-from app.domain.exceptions import RagServiceUnavailableError
+from app.domain.exceptions import RagServiceUnavailableError, RagValidationError
 from app.domain.repositories import EvaluationGenerator
 from app.infrastructure.evaluation_prompt import build_prompt, parse_llm_evaluation
+from app.infrastructure.rag_api_common import RAG_API_USER_AGENT, is_validation_status
 
 logger = logging.getLogger(__name__)
 
@@ -56,6 +57,13 @@ _SERVICE_NAME = "RAG chat API"
 # controlled-fallback condition instead -- the two routes' client contracts
 # genuinely differ on this point, not a copy-paste-and-forgot-to-change.
 _RETRYABLE_ERROR_CODES = frozenset({"RAG_CHAT_TIMEOUT", "RAG_CHAT_EMPTY", "RAG_CHAT_DEPENDENCY_ERROR"})
+
+# The doc's own "do not retry ... blindly" callout for this route --
+# RAG_LANGUAGE_MISMATCH is understood-and-rejected, not transient. Used to
+# raise RagValidationError instead of the more general
+# RagServiceUnavailableError -- see that class's docstring
+# (app/domain/exceptions.py).
+_VALIDATION_ERROR_CODES = frozenset({"RAG_LANGUAGE_MISMATCH"})
 
 # How much of a malformed/unparseable raw response to log when parsing fails.
 # Unlike rag_client_adapter.py's evidence text (never logged, even
@@ -152,7 +160,7 @@ class RagLlmEvaluator(EvaluationGenerator):
             write=self._settings.rag_evaluation_read_timeout_seconds,
             pool=self._settings.rag_api_timeout_connect_seconds,
         )
-        headers = {"X-API-Key": api_key.get_secret_value()}
+        headers = {"X-API-Key": api_key.get_secret_value(), "User-Agent": RAG_API_USER_AGENT}
 
         max_attempts = max(1, self._settings.rag_api_max_attempts)
         response: httpx.Response | None = None
@@ -167,11 +175,13 @@ class RagLlmEvaluator(EvaluationGenerator):
                 ) as client:
                     response = await client.post("/v1/rag/chat", json=body)
             except httpx.TimeoutException as exc:
-                logger.warning("[rag_evaluator] request_timeout | attempt=%d/%d", attempt, max_attempts)
+                logger.warning(
+                    "[rag_evaluator] request_timeout | reason=connection | attempt=%d/%d", attempt, max_attempts
+                )
                 raise RagServiceUnavailableError(_SERVICE_NAME, "request timed out") from exc
             except httpx.RequestError as exc:
                 logger.warning(
-                    "[rag_evaluator] request_error | attempt=%d/%d | error_type=%s",
+                    "[rag_evaluator] request_error | reason=connection | attempt=%d/%d | error_type=%s",
                     attempt,
                     max_attempts,
                     type(exc).__name__,
@@ -199,7 +209,23 @@ class RagLlmEvaluator(EvaluationGenerator):
                 await _backoff_sleep(backoff_seconds)
                 continue
 
-            logger.warning("[rag_evaluator] request_failed | http_status=%s | code=%s", response.status_code, code)
+            # Distinguish "the API is telling us plainly this request is
+            # invalid" (401/422, or RAG_LANGUAGE_MISMATCH) from a genuine
+            # outage/connection problem -- see RagValidationError's
+            # docstring (app/domain/exceptions.py).
+            if is_validation_status(response.status_code) or code in _VALIDATION_ERROR_CODES:
+                logger.warning(
+                    "[rag_evaluator] request_failed | reason=validation | http_status=%s | code=%s",
+                    response.status_code,
+                    code,
+                )
+                raise RagValidationError(_SERVICE_NAME, f"returned HTTP {response.status_code} ({code})")
+
+            logger.warning(
+                "[rag_evaluator] request_failed | reason=connection | http_status=%s | code=%s",
+                response.status_code,
+                code,
+            )
             raise RagServiceUnavailableError(_SERVICE_NAME, f"returned HTTP {response.status_code} ({code})")
 
         assert response is not None
@@ -208,7 +234,7 @@ class RagLlmEvaluator(EvaluationGenerator):
             payload = response.json()
             raw_content = payload["choices"][0]["message"]["content"]
         except (ValueError, KeyError, IndexError, TypeError) as exc:
-            logger.warning("[rag_evaluator] unexpected_response_body")
+            logger.warning("[rag_evaluator] unexpected_response_body | reason=unexpected_response")
             raise RagServiceUnavailableError(_SERVICE_NAME, "response body was not in the expected shape") from exc
 
         try:

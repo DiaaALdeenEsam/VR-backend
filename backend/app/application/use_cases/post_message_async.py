@@ -63,7 +63,7 @@ from collections.abc import Callable
 from app.application.use_cases.post_message import retrieve_evidence_or_empty
 from app.config import Settings
 from app.domain.entities import Message, utcnow
-from app.domain.exceptions import NotFoundError, RagServiceUnavailableError, SessionBusyError
+from app.domain.exceptions import NotFoundError, RagServiceUnavailableError, RagValidationError, SessionBusyError
 from app.domain.repositories import (
     AbstractUnitOfWork,
     EvidenceRetriever,
@@ -193,7 +193,7 @@ class PostMessageAsyncUseCase:
                 )
             except asyncio.TimeoutError:
                 logger.warning(
-                    "[post_message] rag_patient_timeout | session_id=%s | message_id=%s | "
+                    "[post_message] rag_patient_timeout | reason=connection | session_id=%s | message_id=%s | "
                     "timeout_s=%.0f -- falling back to fixed reply",
                     session_id,
                     message_id,
@@ -201,10 +201,30 @@ class PostMessageAsyncUseCase:
                 )
                 failed = True
                 reply_text = self._settings.rag_patient_fallback_reply
+            except RagValidationError as exc:
+                # More specific than the RagServiceUnavailableError clause
+                # below (RagValidationError is a subclass of it -- see that
+                # class's docstring, app/domain/exceptions.py) -- catches
+                # first, purely so this log line can say reason="validation"
+                # instead of reason="connection". Behavior is identical
+                # either way: fall back to the same fixed reply, `failed`
+                # still True so the JSON reply frame's status still reads
+                # "failed", not "complete" -- this isn't a real reply, and
+                # nothing about that changes just because the cause was a
+                # request-validation problem instead of an outage.
+                logger.warning(
+                    "[post_message] rag_patient_validation_error | reason=validation | session_id=%s | "
+                    "message_id=%s | error=%s -- falling back to fixed reply",
+                    session_id,
+                    message_id,
+                    exc,
+                )
+                failed = True
+                reply_text = self._settings.rag_patient_fallback_reply
             except RagServiceUnavailableError as exc:
                 logger.warning(
-                    "[post_message] rag_patient_unavailable | session_id=%s | message_id=%s | "
-                    "error=%s -- falling back to fixed reply",
+                    "[post_message] rag_patient_unavailable | reason=connection | session_id=%s | "
+                    "message_id=%s | error=%s -- falling back to fixed reply",
                     session_id,
                     message_id,
                     exc,

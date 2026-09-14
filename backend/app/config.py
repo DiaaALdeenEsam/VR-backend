@@ -236,9 +236,66 @@ class Settings(BaseSettings):
     rag_api_max_attempts: int = 3
     rag_api_retry_backoff_seconds: float = 1.0
 
+    # --- RAG API tunnel-liveness watcher -------------------------------------
+    #
+    # get_settings() is a process-wide @lru_cache singleton (see below) --
+    # once read, rag_api_base_url stays fixed for the process's entire
+    # lifetime even if .env is edited afterward (e.g. because the nport
+    # tunnel fronting the RAG API was reissued a new address, or its lease
+    # -- see docs/backend-rag-handoff.md -- expired and came back). This
+    # background watcher (app/infrastructure/rag_tunnel_watcher.py, started/
+    # stopped from app/main.py's lifespan) periodically probes
+    # GET {rag_api_base_url}/readyz; if that fails AND a fresh read of .env
+    # shows a different RAG_API_BASE_URL than what's currently cached, it
+    # clears the cache via refresh_settings() below so the next request
+    # picks up the new URL with no process restart needed.
+    #
+    # Disabled by default -- this adds a recurring outbound network call
+    # that every deployment should opt into deliberately, not get silently
+    # for free (same reasoning behind every other backend-selection default
+    # in this file being conservative, e.g. evaluation_backend/stt_backend).
+    # Has no effect at all if rag_api_base_url isn't set, regardless of this
+    # flag.
+    rag_tunnel_watch_enabled: bool = False
+
+    # How often the watcher probes /readyz. 60-120s per
+    # docs/backend-rag-handoff.md's own "should be rechecked before each
+    # test session" guidance for this tunnel -- frequent enough to notice a
+    # change within a normal working session, not so frequent it meaningfully
+    # adds to the RAG API's own request volume.
+    rag_tunnel_watch_interval_seconds: float = 90.0
+
+    # Timeout for the /readyz probe itself -- deliberately short and
+    # independent of rag_api_timeout_read_seconds (that one's sized for a
+    # real chat/retrieval call; this is just a liveness ping, and the doc
+    # confirms /readyz "do[es] not require a key" so there's no auth
+    # round-trip to account for either).
+    rag_tunnel_watch_timeout_seconds: float = 10.0
+
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
 
 @lru_cache
 def get_settings() -> Settings:
     return Settings()
+
+
+def refresh_settings() -> Settings:
+    """Clears get_settings()'s cache and returns a freshly-constructed
+    Settings (re-reading .env / the environment from disk right now).
+
+    The next ordinary get_settings() call anywhere in the app picks up
+    whatever changed, with no process restart -- every RAG adapter and
+    every use-case provider in app/api/deps.py calls get_settings() fresh
+    inside its own function body on each invocation rather than capturing
+    one instance at import time, so this takes effect starting with the
+    very next request after it runs.
+
+    Exists as a standalone, directly callable primitive (not just inlined
+    into rag_tunnel_watcher.py, its only caller today) so it's independently
+    testable and usable from anywhere else that might need to force a
+    re-read later without depending on the watcher.
+    """
+
+    get_settings.cache_clear()
+    return get_settings()

@@ -46,7 +46,7 @@ from collections.abc import Callable
 from app.application.use_cases.evaluate_session import EvaluationInputs, gather_evaluation_inputs
 from app.config import Settings
 from app.domain.entities import SessionEvaluation
-from app.domain.exceptions import RagServiceUnavailableError, SessionBusyError
+from app.domain.exceptions import RagServiceUnavailableError, RagValidationError, SessionBusyError
 from app.domain.repositories import AbstractUnitOfWork, EvaluationGenerator, ReplyPushPort, SessionConcurrencyGuard
 
 logger = logging.getLogger(__name__)
@@ -115,8 +115,8 @@ class EvaluateSessionAsyncUseCase:
                 )
             except asyncio.TimeoutError:
                 logger.warning(
-                    "[evaluate_session] rag_evaluation_timeout | session_id=%s | timeout_s=%.0f -- "
-                    "reporting failure (no fallback score)",
+                    "[evaluate_session] rag_evaluation_timeout | reason=connection | session_id=%s | "
+                    "timeout_s=%.0f -- reporting failure (no fallback score)",
                     session_id,
                     self._settings.rag_evaluation_hard_timeout_seconds,
                 )
@@ -125,10 +125,27 @@ class EvaluateSessionAsyncUseCase:
                     f"evaluation timed out after {self._settings.rag_evaluation_hard_timeout_seconds:.0f}s",
                 )
                 return
+            except RagValidationError as exc:
+                # More specific than the RagServiceUnavailableError clause
+                # below (RagValidationError is a subclass of it -- see that
+                # class's docstring, app/domain/exceptions.py) -- catches
+                # first, purely so this log line can say reason="validation"
+                # instead of reason="connection". Behavior is identical
+                # either way: no fallback score, same "failed" push (see
+                # this module's own docstring for why no fallback score
+                # exists here regardless of cause).
+                logger.warning(
+                    "[evaluate_session] rag_evaluation_validation_error | reason=validation | session_id=%s | "
+                    "error=%s -- reporting failure (no fallback score)",
+                    session_id,
+                    exc,
+                )
+                await self._push_failed(session_id, str(exc))
+                return
             except RagServiceUnavailableError as exc:
                 logger.warning(
-                    "[evaluate_session] rag_evaluation_unavailable | session_id=%s | error=%s -- "
-                    "reporting failure (no fallback score)",
+                    "[evaluate_session] rag_evaluation_unavailable | reason=connection | session_id=%s | "
+                    "error=%s -- reporting failure (no fallback score)",
                     session_id,
                     exc,
                 )

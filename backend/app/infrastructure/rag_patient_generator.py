@@ -45,8 +45,9 @@ import httpx
 
 from app.config import Settings, get_settings
 from app.domain.entities import Evidence, Message, Scenario
-from app.domain.exceptions import RagServiceUnavailableError
+from app.domain.exceptions import RagServiceUnavailableError, RagValidationError
 from app.domain.repositories import PatientReplyGenerator
+from app.infrastructure.rag_api_common import RAG_API_USER_AGENT, is_validation_status
 
 logger = logging.getLogger(__name__)
 
@@ -59,7 +60,41 @@ _SERVICE_NAME = "RAG patient-chat API"
 # condition", not something a retry would fix.
 _RETRYABLE_ERROR_CODES = frozenset({"PATIENT_CHAT_TIMEOUT", "PATIENT_CHAT_DEPENDENCY_ERROR"})
 
+# The same two codes the doc calls "controlled fallback conditions" above --
+# i.e. the request was understood and definitively rejected, not a transient
+# failure -- used to raise RagValidationError instead of the more general
+# RagServiceUnavailableError. Distinct from _RETRYABLE_ERROR_CODES: those two
+# sets are disjoint by construction (a code is either "retry this" or "don't
+# bother, it won't change").
+_VALIDATION_ERROR_CODES = frozenset({"PATIENT_LANGUAGE_MISMATCH", "PATIENT_CHAT_EMPTY"})
+
 MAX_HISTORY_MESSAGES = 8
+
+# Per-message and total-combined-length safety caps, mirroring
+# evaluation_prompt.py's MAX_PROMPT_CHARS/GOLD_STANDARD_MAX_CHARS pattern and
+# its own documented finding: live testing against the real API found
+# /v1/rag/chat's retrieval step fails internally (undocumented 503) once a
+# single message's text passes roughly 2,000 characters -- see that module's
+# docstring for the full empirical writeup (2026-09-07, content-independent,
+# reproducible to within ~10 chars). /v1/rag/patient/chat shares the same
+# underlying retrieval path ("retrieves against the latest user turn" per
+# docs/backend-rag-handoff.md), so the same risk applies here even though it
+# hasn't been separately reproduced against this specific route.
+#
+# MESSAGE_MAX_CHARS uses the exact same ~300-char safety margin
+# evaluation_prompt.py chose (2000 - 300 = 1700) for the same reason: margin
+# against an empirically-found cliff, not a documented limit.
+MESSAGE_MAX_CHARS = 1700
+
+# Separate from the per-message cap above -- guards the *combined* size of
+# the whole "messages" array against the handoff doc's own documented
+# 24,000-char total-length contract ("Limits are 24 messages, 4,000
+# characters per message, and 24,000 characters total"). Unlike
+# MESSAGE_MAX_CHARS, this number is a conservative fraction of that
+# documented ceiling, not independently empirically measured against
+# /v1/rag/patient/chat specifically -- revisit if real payloads ever
+# approach it.
+TOTAL_MESSAGES_MAX_CHARS = 12_000
 
 
 async def _backoff_sleep(seconds: float) -> None:
@@ -76,13 +111,67 @@ def _build_messages(history: list[Message], user_message: str) -> list[dict[str,
     prior user/assistant turns, final message is the new user turn", no
     system role (the doc explicitly says system messages are rejected by
     /v1/rag/chat; the patient route's contract table doesn't list "system" as
-    an accepted role either)."""
+    an accepted role either).
+
+    Also enforces two client-side length guards before this ever reaches an
+    HTTP call, per MESSAGE_MAX_CHARS/TOTAL_MESSAGES_MAX_CHARS's docstrings
+    above:
+
+    - The new user_message -- the turn retrieval actually keys on, per the
+      handoff doc ("/v1/rag/chat retrieves against the latest user turn") --
+      is REJECTED outright (raises RagValidationError) if it's too long,
+      rather than silently truncated. Silently cutting the doctor's actual
+      current question could hand the RAG API a garbled version of what's
+      actually being asked, which is a worse failure mode than refusing
+      clearly and falling back to the fixed reply
+      (PostMessageAsyncUseCase already has that fallback path for exactly
+      this kind of pre-flight rejection).
+    - Older history turns are TRUNCATED instead, never rejected -- losing
+      some context from an earlier turn is a much smaller correctness risk
+      than truncating the live question, matching the
+      truncate-old-not-new philosophy evaluation_prompt.py's own
+      _format_transcript() already uses for the same reason.
+    - If the combined total still exceeds TOTAL_MESSAGES_MAX_CHARS after
+      per-message truncation, the OLDEST history turns are dropped entirely
+      (never the new user_message, which is always the last element added
+      and is provably never reached by this loop as long as more than one
+      message remains) until it fits.
+    """
+
+    if len(user_message) > MESSAGE_MAX_CHARS:
+        raise RagValidationError(
+            _SERVICE_NAME,
+            f"new message is {len(user_message)} chars, exceeding the {MESSAGE_MAX_CHARS}-char "
+            "per-message limit (see MESSAGE_MAX_CHARS's docstring) -- not sent, to avoid silently "
+            "truncating the doctor's actual question",
+        )
 
     messages: list[dict[str, str]] = []
     for m in history[-MAX_HISTORY_MESSAGES:]:
         role = "assistant" if m.role == "assistant" else "user"
-        messages.append({"role": role, "content": m.content})
+        content = m.content
+        if len(content) > MESSAGE_MAX_CHARS:
+            logger.warning(
+                "[rag_patient] history_message_truncated | original_chars=%d | max_chars=%d",
+                len(content),
+                MESSAGE_MAX_CHARS,
+            )
+            content = content[:MESSAGE_MAX_CHARS].rstrip() + " …[truncated]"
+        messages.append({"role": role, "content": content})
     messages.append({"role": "user", "content": user_message})
+
+    total_chars = sum(len(m["content"]) for m in messages)
+    while total_chars > TOTAL_MESSAGES_MAX_CHARS and len(messages) > 1:
+        dropped = messages.pop(0)
+        total_chars -= len(dropped["content"])
+        logger.warning(
+            "[rag_patient] history_message_dropped_for_total_budget | dropped_chars=%d | "
+            "remaining_total_chars=%d | max_total_chars=%d",
+            len(dropped["content"]),
+            total_chars,
+            TOTAL_MESSAGES_MAX_CHARS,
+        )
+
     return messages
 
 
@@ -135,7 +224,7 @@ class RagPatientReplyGenerator(PatientReplyGenerator):
             write=self._settings.rag_patient_read_timeout_seconds,
             pool=self._settings.rag_api_timeout_connect_seconds,
         )
-        headers = {"X-API-Key": api_key.get_secret_value()}
+        headers = {"X-API-Key": api_key.get_secret_value(), "User-Agent": RAG_API_USER_AGENT}
 
         max_attempts = max(1, self._settings.rag_api_max_attempts)
         response: httpx.Response | None = None
@@ -150,11 +239,13 @@ class RagPatientReplyGenerator(PatientReplyGenerator):
                 ) as client:
                     response = await client.post("/v1/rag/patient/chat", json=body)
             except httpx.TimeoutException as exc:
-                logger.warning("[rag_patient] request_timeout | attempt=%d/%d", attempt, max_attempts)
+                logger.warning(
+                    "[rag_patient] request_timeout | reason=connection | attempt=%d/%d", attempt, max_attempts
+                )
                 raise RagServiceUnavailableError(_SERVICE_NAME, "request timed out") from exc
             except httpx.RequestError as exc:
                 logger.warning(
-                    "[rag_patient] request_error | attempt=%d/%d | error_type=%s",
+                    "[rag_patient] request_error | reason=connection | attempt=%d/%d | error_type=%s",
                     attempt,
                     max_attempts,
                     type(exc).__name__,
@@ -182,8 +273,22 @@ class RagPatientReplyGenerator(PatientReplyGenerator):
                 await _backoff_sleep(backoff_seconds)
                 continue
 
+            # Distinguish "the API is telling us plainly this request is
+            # invalid" (401/422, or a documented controlled-fallback code)
+            # from a genuine outage/connection problem -- see
+            # RagValidationError's docstring (app/domain/exceptions.py).
+            if is_validation_status(response.status_code) or code in _VALIDATION_ERROR_CODES:
+                logger.warning(
+                    "[rag_patient] request_failed | reason=validation | http_status=%s | code=%s",
+                    response.status_code,
+                    code,
+                )
+                raise RagValidationError(_SERVICE_NAME, f"returned HTTP {response.status_code} ({code})")
+
             logger.warning(
-                "[rag_patient] request_failed | http_status=%s | code=%s", response.status_code, code
+                "[rag_patient] request_failed | reason=connection | http_status=%s | code=%s",
+                response.status_code,
+                code,
             )
             raise RagServiceUnavailableError(_SERVICE_NAME, f"returned HTTP {response.status_code} ({code})")
 
@@ -193,7 +298,7 @@ class RagPatientReplyGenerator(PatientReplyGenerator):
             payload = response.json()
             content = payload["choices"][0]["message"]["content"]
         except (ValueError, KeyError, IndexError, TypeError) as exc:
-            logger.warning("[rag_patient] unexpected_response_body")
+            logger.warning("[rag_patient] unexpected_response_body | reason=unexpected_response")
             raise RagServiceUnavailableError(_SERVICE_NAME, "response body was not in the expected shape") from exc
 
         logger.info(

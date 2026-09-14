@@ -35,8 +35,9 @@ import httpx
 
 from app.config import Settings, get_settings
 from app.domain.entities import Evidence
-from app.domain.exceptions import RagServiceUnavailableError
+from app.domain.exceptions import RagServiceUnavailableError, RagValidationError
 from app.domain.repositories import EvidenceRetriever
+from app.infrastructure.rag_api_common import RAG_API_USER_AGENT, is_validation_status
 
 logger = logging.getLogger(__name__)
 
@@ -134,7 +135,7 @@ class RagClientAdapter(EvidenceRetriever):
             write=self._settings.rag_api_timeout_read_seconds,
             pool=self._settings.rag_api_timeout_connect_seconds,
         )
-        headers = {"X-API-Key": api_key.get_secret_value()}
+        headers = {"X-API-Key": api_key.get_secret_value(), "User-Agent": RAG_API_USER_AGENT}
 
         # Connection-level errors and non-503 statuses raise immediately (single
         # attempt, no retry) -- only a 503 response body loops back for another
@@ -152,14 +153,16 @@ class RagClientAdapter(EvidenceRetriever):
                 ) as client:
                     response = await client.post("/v1/rag/query", json=body)
             except httpx.TimeoutException as exc:
-                logger.warning("[rag_retrieval] request_timeout | attempt=%d/%d", attempt, max_attempts)
+                logger.warning(
+                    "[rag_retrieval] request_timeout | reason=connection | attempt=%d/%d", attempt, max_attempts
+                )
                 raise RagServiceUnavailableError(_SERVICE_NAME, "request timed out") from exc
             except httpx.RequestError as exc:
                 # Log only the exception's type/class, never str(exc) -- httpx request
                 # errors can embed the request URL (which may carry query params) and,
                 # in some cases, echo back parts of the request; keep this generic.
                 logger.warning(
-                    "[rag_retrieval] request_error | attempt=%d/%d | error_type=%s",
+                    "[rag_retrieval] request_error | reason=connection | attempt=%d/%d | error_type=%s",
                     attempt,
                     max_attempts,
                     type(exc).__name__,
@@ -180,7 +183,22 @@ class RagClientAdapter(EvidenceRetriever):
                 await _backoff_sleep(backoff_seconds)
                 continue
 
-            logger.warning("[rag_retrieval] request_failed | http_status=%s", response.status_code)
+            # 401/422 (or any other non-retried status) -- distinguish a
+            # request the API is telling us plainly it will never accept
+            # from a genuine outage/connection problem, per
+            # docs/backend-rag-handoff.md's "do not retry 401 or 422"
+            # guidance. No route-specific validation error-code allowlist
+            # exists for /v1/rag/query today (unlike the patient-chat/eval
+            # routes below), so this checks status only.
+            if is_validation_status(response.status_code):
+                logger.warning(
+                    "[rag_retrieval] request_failed | reason=validation | http_status=%s", response.status_code
+                )
+                raise RagValidationError(_SERVICE_NAME, f"returned HTTP {response.status_code}")
+
+            logger.warning(
+                "[rag_retrieval] request_failed | reason=connection | http_status=%s", response.status_code
+            )
             raise RagServiceUnavailableError(_SERVICE_NAME, f"returned HTTP {response.status_code}")
 
         assert response is not None  # the loop above always either breaks or raises
@@ -189,7 +207,11 @@ class RagClientAdapter(EvidenceRetriever):
             payload = response.json()
             evidence = _parse_evidence(payload)
         except (ValueError, KeyError, TypeError) as exc:
-            logger.warning("[rag_retrieval] unexpected_response_body")
+            # 200 OK but a body we can't parse -- neither "connection
+            # dropped" nor "our request was invalid" (the API accepted it
+            # and answered); tagged distinctly from both for the same
+            # log-based-triage reason as the two reason= tags above.
+            logger.warning("[rag_retrieval] unexpected_response_body | reason=unexpected_response")
             raise RagServiceUnavailableError(_SERVICE_NAME, "response body was not in the expected shape") from exc
 
         logger.info(

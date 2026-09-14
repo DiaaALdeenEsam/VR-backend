@@ -19,3 +19,11 @@ model_cache/
 *.pth
 *.ckpt
 *.safetensors
+
+# One-off manual investigation scripts and their raw output -- never meant
+# for the codebase. Permanent dev tools live in scripts/ without this
+# prefix; see scripts/reconstruct_eval_prompt.py, scripts/test_session_e2e_live.py,
+# and scripts/test_patient_chat_reliability_live.py for examples that graduated out of it.
+scripts/scratch_*.py
+scripts/scratch_artifact/
+artifact/

@@ -121,6 +121,20 @@ class DischargePlanCategory(str, Enum):
     referral = "referral"
 
 
+class QuestionCategory(str, Enum):
+    """Tags a question as belonging to a scenario's post-session MCQ quiz
+    (migration 0007) -- disease name, attack-severity classification, and
+    management plan across its three stages. QuestionModel.category is
+    nullable; an ordinary OSCE question (list_by_scenario's original
+    audience) simply has no category at all, distinct from any of these."""
+
+    diagnosis = "diagnosis"
+    severity = "severity"
+    management_immediate = "management_immediate"
+    management_monitoring = "management_monitoring"
+    management_disposition = "management_disposition"
+
+
 class TestCategoryModel(SQLModel, table=True):
     __tablename__ = "test_categories"
 
@@ -1130,6 +1144,11 @@ class QuestionModel(SQLModel, table=True):
     # membership) and by the seed script (which resolves this only after choices
     # exist).
     correct_choice_id: int
+    # NULL for an ordinary OSCE question (migration 0007's default, and every
+    # row written before it) -- set only for the small subset of a scenario's
+    # questions that make up its post-session quiz. See QuestionCategory above
+    # and GetPostSessionQuizUseCase.
+    category: QuestionCategory | None = None
 
 
 class ChoiceModel(SQLModel, table=True):

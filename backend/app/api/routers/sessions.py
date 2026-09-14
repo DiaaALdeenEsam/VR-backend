@@ -6,11 +6,18 @@ from app.api.deps import (
     get_answer_question_use_case,
     get_evaluate_session_use_case,
     get_order_test_use_case,
+    get_post_session_quiz_use_case,
     get_session_review_use_case,
     get_start_session_use_case,
 )
-from app.api.schemas.evaluation import EvaluationCriterionRead, SessionEvaluationResponse
+from app.api.schemas.evaluation import (
+    EvaluationCriterionRead,
+    PostSessionQuizResultRead,
+    QuizAnswerResultRead,
+    SessionEvaluationResponse,
+)
 from app.api.schemas.message import MessageRead
+from app.api.schemas.question import ChoiceRead, PostSessionQuizResponse, QuizQuestionRead
 from app.api.schemas.session import (
     AnswerCreate,
     AnswerCreateResponse,
@@ -24,6 +31,7 @@ from app.api.schemas.test import TestOrderCreate, TestOrderResponse
 from app.application.use_cases.answer_question import AnswerQuestionUseCase
 from app.application.use_cases.evaluate_session import EvaluateSessionUseCase
 from app.application.use_cases.evaluate_session_async import EvaluateSessionAsyncUseCase
+from app.application.use_cases.get_post_session_quiz import GetPostSessionQuizUseCase
 from app.application.use_cases.get_session_review import GetSessionReviewUseCase
 from app.application.use_cases.order_test import OrderTestUseCase
 from app.application.use_cases.start_session import StartSessionUseCase
@@ -110,6 +118,47 @@ async def submit_answer(
     )
 
 
+@router.get("/sessions/{session_id}/quiz", response_model=PostSessionQuizResponse)
+async def get_post_session_quiz(
+    session_id: str,
+    use_case: GetPostSessionQuizUseCase = Depends(get_post_session_quiz_use_case),
+) -> PostSessionQuizResponse:
+    """The post-session MCQ quiz for this session's scenario -- disease name,
+    attack-severity classification, and management plan across its three
+    stages (immediate 0-30min, monitoring 30-60min, disposition decision).
+    Intended to be called once the client considers the chat session over,
+    the same moment it might also call POST /sessions/{id}/evaluate -- the
+    two are independent, neither triggers the other.
+
+    Unlike /evaluate, this responds synchronously with the real result in
+    one call: scoring an MCQ against a stored correct_choice_id is an instant
+    DB lookup, not an external LLM call, so there is no "pending" status or
+    WS push here (see GetPostSessionQuizUseCase's docstring). `questions`
+    excludes correct_choice_id, same as GET /scenarios/{id}/questions --
+    submit answers via the existing POST /sessions/{id}/answers (unchanged,
+    already generic over any question_id) and read correctness back via the
+    existing GET /sessions/{id} review.
+
+    404 if the session doesn't exist. An empty `questions` list means this
+    scenario has no post-session quiz seeded yet -- not an error.
+    """
+
+    scenario_id, questions = await use_case.execute(session_id)
+    return PostSessionQuizResponse(
+        session_id=session_id,
+        scenario_id=scenario_id,
+        questions=[
+            QuizQuestionRead(
+                id=q.id,
+                text=q.text,
+                choices=[ChoiceRead(id=c.id, text=c.text) for c in q.choices],
+                category=q.category,  # type: ignore[arg-type]
+            )
+            for q in questions
+        ],
+    )
+
+
 @router.post("/sessions/{session_id}/evaluate", response_model=SessionEvaluationResponse)
 async def evaluate_session(
     session_id: str,
@@ -134,6 +183,13 @@ async def evaluate_session(
     session is already being generated -- see EvaluateSessionAsyncUseCase's
     module docstring for the concurrency policy.
 
+    `quiz` -- the post-session MCQ quiz result -- rides along in this same
+    response/WS-frame pair but is computed independently of the RAG-judged
+    conversation above it (see PostSessionQuizResultRead, gather_quiz_result):
+    already fully populated even in the immediate "pending" response, and
+    unaffected by a "failed" conversation evaluation. It never leaks
+    correct_choice_id, same as GET /sessions/{id}/quiz.
+
     404 if the session or its scenario doesn't exist; 400 if the scenario has
     no gold_standard set (see MissingGoldStandardError, handled centrally by
     app/api/error_handlers.py's generic DomainError -> 400 mapping) -- both
@@ -149,4 +205,25 @@ async def evaluate_session(
             EvaluationCriterionRead(name=c.name, passed=c.passed, feedback=c.feedback)
             for c in evaluation.criteria_breakdown
         ],
+        quiz=(
+            PostSessionQuizResultRead(
+                total_questions=evaluation.quiz.total_questions,
+                answered_count=evaluation.quiz.answered_count,
+                correct_count=evaluation.quiz.correct_count,
+                score=evaluation.quiz.score,
+                questions=[
+                    QuizAnswerResultRead(
+                        question_id=q.question_id,
+                        category=q.category,
+                        text=q.text,
+                        answered=q.answered,
+                        choice_id=q.choice_id,
+                        is_correct=q.is_correct,
+                    )
+                    for q in evaluation.quiz.questions
+                ],
+            )
+            if evaluation.quiz is not None
+            else None
+        ),
     )

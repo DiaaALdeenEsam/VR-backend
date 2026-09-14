@@ -146,6 +146,7 @@ there.)
 | GET    | `/test-categories/{id}/tests`      | menu only — no `result` until ordered                |
 | POST   | `/sessions/{id}/tests`             | `{test_id}` → result, recorded as an OrderedTest     |
 | GET    | `/scenarios/{id}/questions`        | choices only — no `correct_choice_id`                |
+| GET    | `/sessions/{id}/quiz`               | the post-session MCQ quiz for this session's scenario (disease name, attack-severity classification, management plan across its 3 stages) — questions tagged via `category`; answered/scored through the same `/answers`/review endpoints below |
 | POST   | `/sessions/{id}/answers`           | `{question_id, choice_id}` → recorded, no correctness leak; upserts on re-answer |
 | GET    | `/sessions/{id}`                   | full review: messages, ordered tests, answers **with** correctness |
 | POST   | `/sessions/{id}/evaluate`          | OSCE-style evaluation (score, summary, criteria); 400 if the scenario has no `gold_standard`; generated on demand, not persisted |

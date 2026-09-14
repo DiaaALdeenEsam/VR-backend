@@ -49,11 +49,22 @@ class Choice:
 
 @dataclass
 class Question:
+    """`category` is None for an ordinary OSCE quiz question (the original
+    shape, unchanged) and one of 'diagnosis'/'severity'/'management_immediate'/
+    'management_monitoring'/'management_disposition' (see QuestionCategory,
+    infra-side enum, migration 0007) for a question that belongs to a
+    scenario's post-session multiple-choice quiz -- see
+    GetPostSessionQuizUseCase. Plain str, not the infra enum, for the same
+    reason PatientIdentity.sex is a plain str: domain entities never depend
+    on app.infrastructure.
+    """
+
     id: int
     scenario_id: int
     text: str
     correct_choice_id: int
     choices: list[Choice] = field(default_factory=list)
+    category: str | None = None
 
 
 @dataclass
@@ -325,6 +336,57 @@ class Evidence:
 
 
 @dataclass
+class QuizAnswerResult:
+    """One post-session-quiz question's outcome, as seen from within a
+    session evaluation -- see QuizResult and Question.category (migration
+    0007). `category` is never None here (only categorized quiz questions
+    ever appear in a QuizResult). `answered`/`choice_id`/`is_correct` are
+    None/False when the doctor hasn't answered this question at all yet --
+    distinct from an answered-but-wrong state (`is_correct=False`).
+    Deliberately excludes correct_choice_id -- same discipline as
+    QuestionRead/QuizQuestionRead (app/api/schemas/question.py): a session
+    evaluation must never leak the answer key either.
+    """
+
+    question_id: int
+    category: str
+    text: str
+    answered: bool
+    choice_id: int | None = None
+    is_correct: bool | None = None
+
+
+@dataclass
+class QuizResult:
+    """Aggregate post-session-quiz outcome for one session, attached to
+    SessionEvaluation.quiz -- see gather_quiz_result()
+    (app/application/use_cases/evaluate_session.py).
+
+    Not a persisted aggregate, same as SessionEvaluation itself: computed
+    fresh, synchronously, from the existing `questions`/`choices`/`answers`
+    tables every time an evaluation is generated -- a plain local DB lookup
+    against Question.correct_choice_id, never routed through
+    EvaluationGenerator/the RAG API. `questions` is ordered diagnosis ->
+    severity -> management_immediate -> management_monitoring ->
+    management_disposition (the same order QuestionRepository.
+    list_post_session_quiz already returns), so each entry's `category`
+    already doubles as a per-category breakdown -- there is exactly one
+    question per category by construction (see seed_data/questions.json's
+    Asthma quiz), so no separate category->score map is needed.
+
+    `score` is None (not 0.0) when total_questions == 0 -- a scenario with no
+    post-session quiz seeded yet has no quiz score to report, distinct from a
+    seeded-but-unanswered quiz (score 0.0, every question `answered=False`).
+    """
+
+    total_questions: int
+    answered_count: int
+    correct_count: int
+    score: float | None
+    questions: list[QuizAnswerResult] = field(default_factory=list)
+
+
+@dataclass
 class SessionEvaluation:
     """Result of evaluating a completed session against a scenario's gold standard.
 
@@ -346,9 +408,21 @@ class SessionEvaluation:
     real code -- used directly by fast/deterministic tests, same relationship
     PostMessageUseCase has to PostMessageAsyncUseCase) always returns
     "complete" immediately, same as before this field existed.
+
+    `quiz` is unrelated to `status`/`score`/`summary`/`criteria_breakdown`
+    above -- those four describe the RAG-judged conversation only, computed
+    by EvaluationGenerator exactly as before this field existed (that port's
+    signature/behavior is untouched). `quiz` is attached separately by the
+    use case (EvaluateSessionUseCase/EvaluateSessionAsyncUseCase), after the
+    EvaluationGenerator call returns, from a plain local DB lookup -- see
+    gather_quiz_result(). It is populated even while `status == "pending"`
+    (quiz scoring costs nothing, unlike the RAG call) and stays populated on
+    `status == "failed"` too (a failed conversation evaluation doesn't
+    invalidate an already-computed quiz result).
     """
 
     status: str = "complete"
     score: float | None = None
     summary: str | None = None
     criteria_breakdown: list[EvaluationCriterion] = field(default_factory=list)
+    quiz: QuizResult | None = None

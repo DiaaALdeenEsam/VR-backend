@@ -96,6 +96,16 @@ class QuestionRepository(ABC):
     @abstractmethod
     async def get(self, question_id: int) -> e.Question | None: ...
 
+    @abstractmethod
+    async def list_post_session_quiz(self, scenario_id: int) -> list[e.Question]:
+        """This scenario's post-session-quiz questions only (those with a
+        non-null `category` -- see Question.category and migration 0007),
+        ordered diagnosis -> severity -> management_immediate ->
+        management_monitoring -> management_disposition. Excludes every
+        ordinary OSCE question (category IS NULL) that list_by_scenario()
+        would otherwise also return -- see GetPostSessionQuizUseCase.
+        """
+
 
 class SessionRepository(ABC):
     @abstractmethod

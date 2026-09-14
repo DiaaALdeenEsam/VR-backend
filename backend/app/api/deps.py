@@ -18,6 +18,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.application.use_cases.answer_question import AnswerQuestionUseCase
 from app.application.use_cases.evaluate_session_async import EvaluateSessionAsyncUseCase
+from app.application.use_cases.get_post_session_quiz import GetPostSessionQuizUseCase
 from app.application.use_cases.get_session_review import GetSessionReviewUseCase
 from app.application.use_cases.list_questions import ListQuestionsUseCase
 from app.application.use_cases.list_relevant_tests import ListRelevantTestsUseCase
@@ -249,6 +250,12 @@ def get_session_review_use_case(
     uow: AbstractUnitOfWork = Depends(get_uow),
 ) -> GetSessionReviewUseCase:
     return GetSessionReviewUseCase(uow)
+
+
+def get_post_session_quiz_use_case(
+    uow: AbstractUnitOfWork = Depends(get_uow),
+) -> GetPostSessionQuizUseCase:
+    return GetPostSessionQuizUseCase(uow)
 
 
 def get_evaluation_generator() -> EvaluationGenerator:

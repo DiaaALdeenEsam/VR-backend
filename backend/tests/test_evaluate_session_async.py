@@ -108,6 +108,89 @@ async def seeded_session(session_factory: async_sessionmaker[AsyncSession]) -> s
         return session_row.id
 
 
+_QUIZ_CATEGORIES_IN_ORDER = [
+    "diagnosis",
+    "severity",
+    "management_immediate",
+    "management_monitoring",
+    "management_disposition",
+]
+
+
+@pytest_asyncio.fixture
+async def seeded_session_with_quiz(session_factory: async_sessionmaker[AsyncSession]) -> dict:
+    """Same shape as `seeded_session` above, plus 5 post-session-quiz
+    questions -- one per category (migration 0007) -- each with 4 choices
+    (choice index 0 is always the correct one). Returns the ids tests need to
+    submit specific answers directly against the DB (via _submit_answer
+    below) before invoking the use case."""
+
+    from app.infrastructure.db.models import ChoiceModel, QuestionModel, ScenarioModel, SessionModel
+
+    async with session_factory() as session:
+        scenario = ScenarioModel(
+            name="حالة تقييم مع اختبار ما بعد المحادثة", case_text="نص الحالة.", gold_standard="المعيار المرجعي"
+        )
+        session.add(scenario)
+        await session.flush()
+
+        session_row = SessionModel(id=str(uuid.uuid4()), scenario_id=scenario.id, created_at=utcnow())
+        session.add(session_row)
+        await session.flush()
+
+        question_ids: dict[str, int] = {}
+        choice_ids: dict[str, list[int]] = {}
+        for category in _QUIZ_CATEGORIES_IN_ORDER:
+            question = QuestionModel(
+                scenario_id=scenario.id, text=f"{category} question", correct_choice_id=-1, category=category
+            )
+            session.add(question)
+            await session.flush()
+
+            ids = []
+            for i in range(4):
+                choice = ChoiceModel(question_id=question.id, text=f"{category} choice {i}")
+                session.add(choice)
+                await session.flush()
+                ids.append(choice.id)
+
+            question.correct_choice_id = ids[0]
+            session.add(question)
+            question_ids[category] = question.id
+            choice_ids[category] = ids
+        await session.commit()
+
+        return {"session_id": session_row.id, "question_ids": question_ids, "choice_ids": choice_ids}
+
+
+async def _submit_answer(
+    session_factory: async_sessionmaker[AsyncSession],
+    session_id: str,
+    question_id: int,
+    choice_id: int,
+    is_correct: bool,
+) -> None:
+    """Writes an Answer row directly (bypassing the API/AnswerQuestionUseCase)
+    -- this file tests EvaluateSessionAsyncUseCase in isolation, the same
+    reasoning `seeded_session`/`seeded_session_without_gold_standard` above
+    write ScenarioModel/SessionModel rows directly rather than going through
+    POST /sessions."""
+
+    from app.infrastructure.db.models import AnswerModel
+
+    async with session_factory() as session:
+        session.add(
+            AnswerModel(
+                session_id=session_id,
+                question_id=question_id,
+                choice_id=choice_id,
+                is_correct=is_correct,
+                answered_at=utcnow(),
+            )
+        )
+        await session.commit()
+
+
 @pytest_asyncio.fixture
 async def seeded_session_without_gold_standard(session_factory: async_sessionmaker[AsyncSession]) -> str:
     from app.infrastructure.db.models import ScenarioModel, SessionModel
@@ -165,10 +248,142 @@ async def test_execute_returns_pending_immediately(
     assert pending.score is None
     assert pending.summary is None
     assert pending.criteria_breakdown == []
+    # seeded_session's scenario has no post-session-quiz questions seeded --
+    # `quiz` must still be present (not None), just empty. See
+    # test_pending_response_includes_computed_quiz_result below for the
+    # populated case.
+    assert pending.quiz is not None
+    assert pending.quiz.total_questions == 0
+    assert pending.quiz.score is None
+    assert pending.quiz.questions == []
     assert generator.calls == 0  # generation hasn't necessarily even started synchronously
     assert guard.is_busy(seeded_session) is True
 
     await _wait_until_settled(guard, seeded_session)
+
+
+# ---------- post-session quiz merged into the pending ack / WS pushes --------
+#
+# Quiz scoring is a local DB lookup, never routed through EvaluationGenerator/
+# the RAG API -- these tests use the same _FakeEvaluationGenerator as every
+# other test in this file for the conversation portion; only the `quiz`
+# section is new here.
+
+
+async def test_pending_response_includes_computed_quiz_result(
+    session_factory: async_sessionmaker[AsyncSession], seeded_session_with_quiz: dict
+) -> None:
+    ids = seeded_session_with_quiz
+    session_id = ids["session_id"]
+
+    # diagnosis answered correctly, severity answered incorrectly, the other
+    # 3 categories left unanswered.
+    await _submit_answer(
+        session_factory, session_id, ids["question_ids"]["diagnosis"], ids["choice_ids"]["diagnosis"][0], True
+    )
+    await _submit_answer(
+        session_factory, session_id, ids["question_ids"]["severity"], ids["choice_ids"]["severity"][1], False
+    )
+
+    guard = InMemorySessionConcurrencyGuard()
+    push_port = _RecordingPushPort()
+    generator = _FakeEvaluationGenerator(delay=0.2)  # slow -- proves quiz doesn't wait on it
+    use_case = _build_use_case(session_factory, generator, push_port, guard)
+
+    pending = await use_case.execute(session_id)
+
+    assert pending.status == "pending"
+    assert generator.calls == 0  # RAG call needn't have started -- quiz result didn't wait for it either
+
+    quiz = pending.quiz
+    assert quiz is not None
+    assert quiz.total_questions == 5
+    assert quiz.answered_count == 2
+    assert quiz.correct_count == 1
+    assert quiz.score == 20.0  # 1/5 * 100
+
+    categories = [q.category for q in quiz.questions]
+    assert categories == _QUIZ_CATEGORIES_IN_ORDER
+    assert quiz.questions[0].answered is True and quiz.questions[0].is_correct is True  # diagnosis
+    assert quiz.questions[1].answered is True and quiz.questions[1].is_correct is False  # severity
+    for unanswered in quiz.questions[2:]:
+        assert unanswered.answered is False
+        assert unanswered.choice_id is None
+        assert unanswered.is_correct is None
+
+    await _wait_until_settled(guard, session_id)
+
+
+async def test_successful_push_includes_quiz_result(
+    session_factory: async_sessionmaker[AsyncSession], seeded_session_with_quiz: dict
+) -> None:
+    ids = seeded_session_with_quiz
+    session_id = ids["session_id"]
+    await _submit_answer(
+        session_factory,
+        session_id,
+        ids["question_ids"]["management_disposition"],
+        ids["choice_ids"]["management_disposition"][0],
+        True,
+    )
+
+    guard = InMemorySessionConcurrencyGuard()
+    push_port = _RecordingPushPort()
+    generator = _FakeEvaluationGenerator(delay=0.05)
+    use_case = _build_use_case(session_factory, generator, push_port, guard)
+
+    await use_case.execute(session_id)
+    await _wait_until_settled(guard, session_id)
+
+    evaluation_pushes = [p for p in push_port.pushed if p["type"] == "evaluation"]
+    assert len(evaluation_pushes) == 1
+    pushed = evaluation_pushes[0]
+    assert pushed["status"] == "complete"
+    assert pushed["score"] == 87.5  # _FakeEvaluationGenerator's default result
+
+    quiz = pushed["quiz"]
+    assert quiz["total_questions"] == 5
+    assert quiz["answered_count"] == 1
+    assert quiz["correct_count"] == 1
+    assert quiz["score"] == 20.0
+    by_category = {q["category"]: q for q in quiz["questions"]}
+    assert by_category["management_disposition"]["answered"] is True
+    assert by_category["management_disposition"]["is_correct"] is True
+    for q in quiz["questions"]:
+        assert "correct_choice_id" not in q  # never leaked
+
+
+async def test_failed_push_still_includes_quiz_result(
+    session_factory: async_sessionmaker[AsyncSession], seeded_session_with_quiz: dict
+) -> None:
+    """A failed/timed-out RAG conversation evaluation must not drop the
+    already-computed, purely-local quiz result -- the two are independent."""
+
+    ids = seeded_session_with_quiz
+    session_id = ids["session_id"]
+    await _submit_answer(
+        session_factory, session_id, ids["question_ids"]["diagnosis"], ids["choice_ids"]["diagnosis"][0], True
+    )
+
+    guard = InMemorySessionConcurrencyGuard()
+    push_port = _RecordingPushPort()
+    generator = _FakeEvaluationGenerator(delay=1.0)
+    use_case = _build_use_case(session_factory, generator, push_port, guard, hard_timeout_seconds=0.1)
+
+    await use_case.execute(session_id)
+    await _wait_until_settled(guard, session_id)
+
+    evaluation_pushes = [p for p in push_port.pushed if p["type"] == "evaluation"]
+    assert len(evaluation_pushes) == 1
+    pushed = evaluation_pushes[0]
+    assert pushed["status"] == "failed"
+    assert pushed["score"] is None
+
+    quiz = pushed["quiz"]
+    assert quiz["total_questions"] == 5
+    assert quiz["answered_count"] == 1
+    assert quiz["correct_count"] == 1
+    assert quiz["score"] == 20.0
 
 
 # ---------- success path: real evaluation lands, gets pushed, score computed -
@@ -399,6 +614,14 @@ async def test_evaluate_endpoint_uses_async_path_when_wired_to_it(client, seed_i
         assert body["score"] is None
         assert body["summary"] is None
         assert body["criteria_breakdown"] == []
+        # seed_ids' question has no category -- quiz section present but empty.
+        assert body["quiz"] == {
+            "total_questions": 0,
+            "answered_count": 0,
+            "correct_count": 0,
+            "score": None,
+            "questions": [],
+        }
 
         # A second call while the first is still in flight is a 409.
         second = await client.post(f"/sessions/{session_id}/evaluate")
@@ -432,10 +655,10 @@ def _run_migrations() -> None:
     command.upgrade(alembic_cfg, "head")
 
 
-async def _seed_scenario_with_gold_standard() -> int:
+async def _seed_scenario_with_gold_standard() -> dict:
     from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-    from app.infrastructure.db.models import ScenarioModel
+    from app.infrastructure.db.models import ChoiceModel, QuestionModel, ScenarioModel
 
     engine = create_async_engine(get_settings().database_url)
     try:
@@ -443,9 +666,27 @@ async def _seed_scenario_with_gold_standard() -> int:
         async with session_factory() as session:
             scenario = ScenarioModel(name="سيناريو تقييم WS", case_text="نص الحالة.", gold_standard="معيار مرجعي")
             session.add(scenario)
+            await session.flush()
+
+            # One post-session-quiz question (diagnosis) -- enough to prove
+            # `quiz` rides along on the real WS "evaluation" frame, without
+            # needing all 5 categories for this particular check.
+            question = QuestionModel(
+                scenario_id=scenario.id, text="ws quiz question", correct_choice_id=-1, category="diagnosis"
+            )
+            session.add(question)
+            await session.flush()
+            correct = ChoiceModel(question_id=question.id, text="correct")
+            wrong = ChoiceModel(question_id=question.id, text="wrong")
+            session.add(correct)
+            session.add(wrong)
+            await session.flush()
+            question.correct_choice_id = correct.id
+            session.add(question)
+
             await session.commit()
             assert scenario.id is not None
-            return scenario.id
+            return {"scenario_id": scenario.id, "question_id": question.id, "correct_choice_id": correct.id}
     finally:
         await engine.dispose()
 
@@ -462,7 +703,8 @@ def test_evaluate_websocket_pushes_evaluation_frame(tmp_path, monkeypatch) -> No
     get_settings.cache_clear()
 
     _run_migrations()
-    scenario_id = asyncio.run(_seed_scenario_with_gold_standard())
+    seeded = asyncio.run(_seed_scenario_with_gold_standard())
+    scenario_id = seeded["scenario_id"]
 
     fastapi_app = create_app()
 
@@ -498,16 +740,36 @@ def test_evaluate_websocket_pushes_evaluation_frame(tmp_path, monkeypatch) -> No
             assert create_resp.status_code == 201
             session_id = create_resp.json()["session_id"]
 
+            answer_resp = test_client.post(
+                f"/sessions/{session_id}/answers",
+                json={"question_id": seeded["question_id"], "choice_id": seeded["correct_choice_id"]},
+            )
+            assert answer_resp.status_code == 201
+
             with test_client.websocket_connect(f"/ws/voice?session_id={session_id}") as ws:
                 eval_resp = test_client.post(f"/sessions/{session_id}/evaluate")
                 assert eval_resp.status_code == 200
-                assert eval_resp.json()["status"] == "pending"
+                pending_body = eval_resp.json()
+                assert pending_body["status"] == "pending"
+                # quiz is already fully computed in the immediate ack -- it
+                # doesn't wait for the RAG push like score/summary do.
+                assert pending_body["quiz"]["total_questions"] == 1
+                assert pending_body["quiz"]["answered_count"] == 1
+                assert pending_body["quiz"]["correct_count"] == 1
 
                 frame = ws.receive_json()
                 assert frame["type"] == "evaluation"
                 assert frame["status"] == "complete"
                 assert frame["score"] == 75.0
                 assert frame["summary"] == "ws test summary"
+                # quiz rides along on the real pushed WS frame too, same shape.
+                assert frame["quiz"]["total_questions"] == 1
+                assert frame["quiz"]["answered_count"] == 1
+                assert frame["quiz"]["correct_count"] == 1
+                assert frame["quiz"]["score"] == 100.0
+                assert frame["quiz"]["questions"][0]["category"] == "diagnosis"
+                assert frame["quiz"]["questions"][0]["is_correct"] is True
+                assert "correct_choice_id" not in frame["quiz"]["questions"][0]
                 assert frame["criteria_breakdown"] == [
                     {"name": "Conversation quality", "passed": True, "feedback": "fine"}
                 ]

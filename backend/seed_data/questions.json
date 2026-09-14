@@ -35,5 +35,73 @@
       ],
       "correct_choice_id": "c1"
     }
+  ],
+  "sc_asthma_severe_attack": [
+    {
+      "id": "q1",
+      "text": "ما هو التشخيص الأرجح لحالة هذا المريض؟",
+      "choices": [
+        { "id": "c1", "text": "نوبة ربو حادة (Acute Asthma Attack)" },
+        { "id": "c2", "text": "تفاقم حاد لمرض الانسداد الرئوي المزمن (COPD Exacerbation)" },
+        { "id": "c3", "text": "التهاب رئوي حاد (Acute Pneumonia)" },
+        { "id": "c4", "text": "انسداد رئوي خثاري (Pulmonary Embolism)" }
+      ],
+      "correct_choice_id": "c1",
+      "category": "diagnosis"
+    },
+    {
+      "id": "q2",
+      "text": "بناءً على معايير BTS/SIGN (PEFR 42% من المتوقع، SpO2 91%، معدل التنفس 28/د، القدرة على الكلام بكلمات متقطعة فقط، نبض 118/د)، ما هو تصنيف شدة هذه النوبة؟",
+      "choices": [
+        { "id": "c1", "text": "نوبة ربو خفيفة (Mild)" },
+        { "id": "c2", "text": "نوبة ربو متوسطة (Moderate)" },
+        { "id": "c3", "text": "نوبة ربو حادة شديدة (Acute Severe)" },
+        { "id": "c4", "text": "نوبة ربو مهددة للحياة (Life-Threatening)" }
+      ],
+      "correct_choice_id": "c3",
+      "category": "severity"
+    },
+    {
+      "id": "q3",
+      "text": "ما هو التدبير العلاجي الصحيح خلال المرحلة الأولى (0-30 دقيقة)؟",
+      "choices": [
+        {
+          "id": "c1",
+          "text": "أكسجين بتدفق عالٍ (هدف SpO2 94-98%) + Salbutamol وIpratropium عبر البخاخ + كورتيكوستيرويد جهازي (Prednisolone فموي أو Hydrocortisone وريدي)"
+        },
+        { "id": "c2", "text": "مراقبة سريرية فقط دون أي تدخل دوائي حتى تتضح الصورة" },
+        { "id": "c3", "text": "مضاد حيوي وريدي فوري دون موسعات قصبية" },
+        { "id": "c4", "text": "تنبيب رغامي فوري بغض النظر عن استجابة المريض" }
+      ],
+      "correct_choice_id": "c1",
+      "category": "management_immediate"
+    },
+    {
+      "id": "q4",
+      "text": "إذا لم يتحسن المريض بعد العلاج الأولي، ماذا يجب أن تتضمن المرحلة الثانية (30-60 دقيقة)؟",
+      "choices": [
+        {
+          "id": "c1",
+          "text": "إعادة قياس PEFR وتكرار Salbutamol وIpratropium، وإعطاء Magnesium Sulfate وريدي، وإخطار الفريق الطبي/العناية المركزة"
+        },
+        { "id": "c2", "text": "إيقاف كل العلاج والاكتفاء بمراقبة المريض فقط" },
+        { "id": "c3", "text": "إعطاء دواء مضاد للسعال فقط دون إعادة تقييم" },
+        { "id": "c4", "text": "تخريج المريض فورًا إلى المنزل" }
+      ],
+      "correct_choice_id": "c1",
+      "category": "management_monitoring"
+    },
+    {
+      "id": "q5",
+      "text": "أي مما يلي يُعد من معايير قبول المريض في المستشفى بدلًا من تخريجه؟",
+      "choices": [
+        { "id": "c1", "text": "PEFR أقل من 75% من المتوقع بعد العلاج" },
+        { "id": "c2", "text": "PEFR أكبر من أو يساوي 75% من المتوقع مع القدرة على الكلام بجمل كاملة" },
+        { "id": "c3", "text": "SpO2 أكبر من أو يساوي 94% على هواء الغرفة" },
+        { "id": "c4", "text": "عدم وجود ضيق تنفس أثناء الراحة" }
+      ],
+      "correct_choice_id": "c1",
+      "category": "management_disposition"
+    }
   ]
 }

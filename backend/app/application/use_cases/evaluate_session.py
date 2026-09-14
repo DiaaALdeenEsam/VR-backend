@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
-from app.domain.entities import SessionEvaluation
+from app.domain.entities import QuizAnswerResult, QuizResult, SessionEvaluation
 from app.domain.exceptions import MissingGoldStandardError, NotFoundError
 from app.domain.repositories import AbstractUnitOfWork, EvaluationGenerator
 
@@ -83,6 +83,73 @@ async def gather_evaluation_inputs(uow: AbstractUnitOfWork, session_id: str) -> 
     )
 
 
+async def gather_quiz_result(uow: AbstractUnitOfWork, session_id: str) -> QuizResult:
+    """Computes this session's post-session-quiz outcome -- disease name,
+    attack-severity classification, and management plan across its three
+    stages (see Question.category, migration 0007) -- entirely from local
+    DB reads (uow.questions.list_post_session_quiz + uow.answers.list_by_session).
+
+    Deliberately separate from EvaluationGenerator/gather_evaluation_inputs
+    above: quiz correctness is a plain lookup against each question's stored
+    correct_choice_id (already computed and stored by AnswerQuestionUseCase
+    at answer-submission time -- see Answer.is_correct), never an LLM call.
+    Called from both EvaluateSessionUseCase.execute() and
+    EvaluateSessionAsyncUseCase (both its synchronous validation phase and,
+    via the value computed there, its background push) so a session
+    evaluation's quiz section is computed exactly once per /evaluate call and
+    attached to whatever SessionEvaluation the EvaluationGenerator call
+    produces -- see SessionEvaluation.quiz's own docstring.
+
+    Raises NotFoundError for an unknown session_id, same as
+    gather_evaluation_inputs -- meant to run inside the same uow/transaction
+    right alongside it, so this is only ever reached once the session is
+    already known to exist in practice, but stays self-contained (a second,
+    cheap uow.sessions.get()) rather than depending on EvaluationInputs
+    carrying a scenario_id it has no other use for.
+    """
+
+    session = await uow.sessions.get(session_id)
+    if session is None:
+        raise NotFoundError("Session", session_id)
+
+    # Already returned in the fixed diagnosis -> severity -> management_immediate
+    # -> management_monitoring -> management_disposition clinical-stage order
+    # by SqlQuestionRepository.list_post_session_quiz -- nothing to re-sort here.
+    questions = await uow.questions.list_post_session_quiz(session.scenario_id)
+    answers = await uow.answers.list_by_session(session_id)
+    answer_by_question_id = {a.question_id: a for a in answers}
+
+    results: list[QuizAnswerResult] = []
+    correct_count = 0
+    answered_count = 0
+    for question in questions:
+        answer = answer_by_question_id.get(question.id)
+        if answer is not None:
+            answered_count += 1
+            if answer.is_correct:
+                correct_count += 1
+        results.append(
+            QuizAnswerResult(
+                question_id=question.id,
+                category=question.category,  # never None -- list_post_session_quiz filters to categorized only
+                text=question.text,
+                answered=answer is not None,
+                choice_id=answer.choice_id if answer is not None else None,
+                is_correct=answer.is_correct if answer is not None else None,
+            )
+        )
+
+    total = len(questions)
+    score = (correct_count / total * 100) if total > 0 else None
+    return QuizResult(
+        total_questions=total,
+        answered_count=answered_count,
+        correct_count=correct_count,
+        score=score,
+        questions=results,
+    )
+
+
 class EvaluateSessionUseCase:
     """Generates an OSCE-style evaluation of a completed session, entirely
     within one request (the evaluation_generator call is awaited inline).
@@ -111,8 +178,14 @@ class EvaluateSessionUseCase:
     async def execute(self, session_id: str) -> SessionEvaluation:
         async with self._uow:
             inputs = await gather_evaluation_inputs(self._uow, session_id)
-            return await self._evaluation_generator.evaluate(
+            evaluation = await self._evaluation_generator.evaluate(
                 case_text=inputs.case_text,
                 gold_standard=inputs.gold_standard,
                 messages=inputs.messages,
             )
+            # Attached AFTER the EvaluationGenerator call returns, from a
+            # separate local-only DB lookup -- see gather_quiz_result's and
+            # SessionEvaluation.quiz's docstrings. evaluation_generator itself
+            # never sees or produces quiz data; its behavior is unchanged.
+            quiz = await gather_quiz_result(self._uow, session_id)
+            return replace(evaluation, quiz=quiz)

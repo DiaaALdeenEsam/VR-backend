@@ -8,7 +8,16 @@ Expects, inside <path-to-json-dir>, any of:
     test_categories.json: { "<id>": {"name": str} }
     tests.json:            { "<category_id>": { "<test_id>": {"name": str, "result": str} } }
     questions.json:        { "<scenario_id>": [ {"id": str, "text": str,
-                              "choices": [{"id": str, "text": str}], "correct_choice_id": str} ] }
+                              "choices": [{"id": str, "text": str}], "correct_choice_id": str,
+                              "category": str|null} ] }
+                            `category`, when present, must be one of
+                            'diagnosis'/'severity'/'management_immediate'/
+                            'management_monitoring'/'management_disposition'
+                            (see QuestionCategory, migration 0007) -- tags this
+                            question as part of the scenario's post-session
+                            quiz. Omit it (or use null) for an ordinary OSCE
+                            question, matching every question written before
+                            this field existed.
 
 Legacy ids are arbitrary strings (not necessarily numeric) -- this script maps
 each legacy id to the new integer primary key assigned by the database as it
@@ -104,7 +113,9 @@ async def seed_questions(
         for q in questions:
             # correct_choice_id is only known once the choices below are inserted
             # and have real ids, so insert with a placeholder and patch it after.
-            question_row = QuestionModel(scenario_id=scenario_id, text=q["text"], correct_choice_id=-1)
+            question_row = QuestionModel(
+                scenario_id=scenario_id, text=q["text"], correct_choice_id=-1, category=q.get("category")
+            )
             session.add(question_row)
             await session.flush()
             assert question_row.id is not None

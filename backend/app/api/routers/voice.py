@@ -161,6 +161,14 @@ async def voice_websocket(
     # same connection may still push its result while a *later* frame is
     # being processed.
     hub.register(session_id, websocket)
+    # The single asyncio.Lock guarding every write to this connection --
+    # see ws_hub.py's module docstring ("Single-writer locking") for why
+    # this handler's own inline sends below must go through the exact same
+    # lock object push()/push_bytes() use for the background pushes
+    # (finished reply, its audio, the "thinking" filler) that can land on
+    # this same connection concurrently with this loop's own sends.
+    lock = hub.get_lock(session_id)
+    assert lock is not None  # register() above always creates one alongside the connection
 
     try:
         while True:
@@ -170,30 +178,36 @@ async def voice_websocket(
                 result = await use_case.execute(session_id, audio_bytes)
             except SessionBusyError as exc:
                 logger.warning("[voice_ws] session_busy | session_id=%s | error=%s", session_id, exc)
-                await websocket.send_json({"type": "error", "code": "session_busy", "detail": str(exc)})
+                async with lock:
+                    await websocket.send_json({"type": "error", "code": "session_busy", "detail": str(exc)})
                 continue
             except DomainError as exc:
                 logger.error(
                     "[voice_ws] connection_closed_on_error | session_id=%s | error=%s", session_id, exc
                 )
-                await websocket.send_json({"type": "error", "detail": str(exc)})
+                async with lock:
+                    await websocket.send_json({"type": "error", "detail": str(exc)})
                 await websocket.close(code=4400)
                 return
 
             assert result.reply_message.id is not None
-            await websocket.send_json({"type": "transcript", "text": result.transcribed_text})
-            await websocket.send_json(
-                {
-                    "type": "reply",
-                    "id": result.reply_message.id,
-                    "text": result.reply_message.content,
-                    "status": result.reply_message.status,
-                    "created_at": result.reply_message.created_at.isoformat(),
-                    "audio_content_type": content_type,
-                }
-            )
-            if isinstance(result, VoiceChatResult):
-                await websocket.send_bytes(result.reply_audio)
+            # One lock acquisition covering the whole reply-to-this-frame
+            # sequence, not one per send -- keeps transcript/reply(/audio)
+            # together on the wire as a unit, not just individually race-free.
+            async with lock:
+                await websocket.send_json({"type": "transcript", "text": result.transcribed_text})
+                await websocket.send_json(
+                    {
+                        "type": "reply",
+                        "id": result.reply_message.id,
+                        "text": result.reply_message.content,
+                        "status": result.reply_message.status,
+                        "created_at": result.reply_message.created_at.isoformat(),
+                        "audio_content_type": content_type,
+                    }
+                )
+                if isinstance(result, VoiceChatResult):
+                    await websocket.send_bytes(result.reply_audio)
             # else: async path -- no audio yet; the real reply + its audio
             # are pushed later via push_port, to this same registered
             # connection, once PostMessageAsyncUseCase's background phase
